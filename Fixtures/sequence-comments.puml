@@ -1,0 +1,11 @@
+@startuml
+' This comment must survive visual editing.
+participant "Customer" as C #LightBlue
+participant S as "Server"
+
+/' A block comment with a message-like string:
+C -> S : This is not a message
+'/
+  C -> S : Hello
+  S --> C : World
+@enduml

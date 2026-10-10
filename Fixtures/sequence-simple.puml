@@ -1,0 +1,6 @@
+@startuml
+actor User
+participant API
+User -> API : Sign in
+API --> User : Welcome
+@enduml

@@ -1,0 +1,11 @@
+@startuml
+skinparam sequenceArrowThickness 2
+hide footbox
+participant A
+participant B
+A -> B ++ : shortcut activation
+return done
+ref over A, B
+Opaque reference body
+end ref
+@enduml

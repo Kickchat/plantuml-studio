@@ -1,0 +1,26 @@
+@startuml
+title Retry workflow
+autonumber
+actor User
+boundary UI
+control Service
+database DB
+User -> UI : Submit
+activate UI
+alt Valid input
+  UI -> Service : Save
+  loop Retry up to 3 times
+    Service -> DB : Insert
+    DB --> Service : Result
+  end
+  Service --> UI : Done
+else Invalid input
+  UI --> User : Validation error
+end
+deactivate UI
+note over User, UI
+No network renderer required.
+end note
+== Complete ==
+... waiting ...
+@enduml

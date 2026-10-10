@@ -1,0 +1,18 @@
+@startuml
+entity User {
+  * id : integer <<PK>>
+}
+entity Profile {
+  * id : integer <<PK>>
+}
+entity Post {
+  * id : integer <<PK>>
+  content : text
+}
+entity Tag {
+  * id : integer <<PK>>
+}
+User ||--o| Profile
+User ||--o{ Post : writes
+Post }o..o{ Tag : tags
+@enduml

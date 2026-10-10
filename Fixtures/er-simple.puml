@@ -1,0 +1,13 @@
+@startuml
+entity "User" as U {
+  * id : integer <<PK>>
+  --
+  name : text
+}
+entity "Session" as S {
+  * id : integer <<PK>>
+  --
+  user_id : integer <<FK>>
+}
+U ||--o{ S : owns
+@enduml

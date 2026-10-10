@@ -1,0 +1,24 @@
+@startuml
+entity A {
+ id : integer
+}
+entity B {
+ id : integer
+}
+A ||..|| B : || / ||
+A ||..o| B : || / o|
+A ||..o{ B : || / o{
+A ||..|{ B : || / |{
+A |o..|| B : |o / ||
+A |o..o| B : |o / o|
+A |o..o{ B : |o / o{
+A |o..|{ B : |o / |{
+A }o..|| B : }o / ||
+A }o..o| B : }o / o|
+A }o..o{ B : }o / o{
+A }o..|{ B : }o / |{
+A }|..|| B : }| / ||
+A }|..o| B : }| / o|
+A }|..o{ B : }| / o{
+A }|..|{ B : }| / |{
+@enduml

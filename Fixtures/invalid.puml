@@ -1,0 +1,6 @@
+@startuml
+participant A
+alt missing end
+A -> A : unfinished
+this is invalid syntax !!!
+@enduml

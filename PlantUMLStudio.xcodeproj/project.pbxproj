@@ -1,0 +1,20 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+  A00000000000000000000001 = {isa = PBXProject; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000004); };
+  A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000005, A00000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+  A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000010, A00000000000000000000011); sourceTree = "<group>"; };
+  A00000000000000000000010 = {isa = PBXFileReference; lastKnownFileType = text; path = Package.swift; sourceTree = "<group>"; };
+  A00000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = folder; path = Sources; sourceTree = "<group>"; };
+  A00000000000000000000004 = {isa = PBXLegacyTarget; buildArgumentsString = scripts/build.sh; buildConfigurationList = A00000000000000000000007; buildPhases = (); buildToolPath = /bin/bash; buildWorkingDirectory = "$(SRCROOT)"; dependencies = (); name = PlantUMLStudio; passBuildSettingsInEnvironment = 1; productName = PlantUMLStudio; };
+  A00000000000000000000007 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000008, A00000000000000000000009); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+  A00000000000000000000005 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+  A00000000000000000000006 = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
+  A00000000000000000000008 = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+  A00000000000000000000009 = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
+ };
+ rootObject = A00000000000000000000001;
+}
