@@ -4,6 +4,8 @@
 
 ## Запуск
 
+Репозиторий: https://github.com/Kickchat/plantuml-studio. Исходный код приложения распространяется по [MIT](LICENSE); лицензии bundled PlantUML/JRE перечислены в [зависимостях](docs/Dependencies.md).
+
 Откройте `dist/PlantUML Studio.app`. Java и PlantUML находятся внутри приложения, сеть не нужна. Сборка для Apple Silicon; macOS 14+.
 
 ## Сборка
@@ -17,7 +19,7 @@ open "dist/PlantUML Studio.app"
 
 Можно открыть `PlantUMLStudio.xcodeproj`, выбрать схему PlantUMLStudio и выполнить Build. Проект запускает тот же build.sh. Для редактирования Swift Package и тестов удобно открыть `Package.swift` в Xcode.
 
-Runtime уже включён в рабочую папку. Если он отсутствует, выполните `./scripts/bootstrap-runtime.sh` (однократно требуется интернет).
+Runtime включён в историю проекта как зафиксированные сторонние зависимости. Если он отсутствует, выполните `./scripts/bootstrap-runtime.sh` (однократно требуется интернет).
 
 ## Проверка
 
