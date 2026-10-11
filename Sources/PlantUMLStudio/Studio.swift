@@ -14,6 +14,7 @@ let erTemplate =
 @main struct PlantUMLStudioApp: App {
   @NSApplicationDelegateAdaptor(ApplicationDelegate.self) private var delegate
   @StateObject private var workspace = Workspace()
+  @StateObject private var shortcuts = ShortcutStore()
   var body: some Scene {
     WindowGroup("PlantUML Studio") {
       VStack(spacing: 0) {
@@ -43,6 +44,15 @@ let erTemplate =
           NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
         ) { _ in workspace.persist() }
     }.commands {
+      CommandMenu("Конструктор") {
+        if let doc = workspace.current {
+          ForEach(StudioCommands.available(doc).filter { shortcuts.keys[$0.id]?.isEmpty == false })
+          { command in
+            Button(command.name, action: command.action).keyboardShortcut(
+              KeyEquivalent(Character(shortcuts.keys[command.id]!)), modifiers: [.command, .option])
+          }
+        }
+      }
       CommandGroup(replacing: .newItem) {
         Button("Новая Sequence") { workspace.new(.sequence) }.keyboardShortcut("n")
         Button("Новая ER") { workspace.new(.er) }.keyboardShortcut(
@@ -54,6 +64,20 @@ let erTemplate =
         Button("Повторить") { workspace.current?.undoManager.redo() }.keyboardShortcut(
           "z", modifiers: [.command, .shift])
       }
+      CommandMenu("Навигация") {
+        Button("Палитра команд…") { workspace.current?.paletteVisible = true }.keyboardShortcut(
+          "p", modifiers: [.command, .shift])
+        Button("Найти…") { workspace.current?.searchVisible = true }.keyboardShortcut("f")
+        Button("Заменить…") { workspace.current?.searchVisible = true }.keyboardShortcut(
+          "f", modifiers: [.command, .option])
+        Button("Увеличить") {
+          if let doc = workspace.current { doc.zoom = min(3, max(0.2, doc.zoom) + 0.1) }
+        }.keyboardShortcut("+")
+        Button("Уменьшить") {
+          if let doc = workspace.current { doc.zoom = max(0.2, doc.zoom - 0.1) }
+        }.keyboardShortcut("-")
+        Button("Масштаб 100%") { workspace.current?.zoom = 1 }.keyboardShortcut("0")
+      }
       CommandGroup(replacing: .saveItem) {
         Button("Сохранить") { workspace.current?.save() }.keyboardShortcut("s")
         Button("Сохранить как…") { workspace.current?.save(asNew: true) }.keyboardShortcut(
@@ -62,6 +86,7 @@ let erTemplate =
         Button("Экспорт PNG…") { workspace.current?.export("png") }
       }
     }
+    Settings { ShortcutSettings(store: shortcuts) }
   }
 }
 struct TabButton: View {

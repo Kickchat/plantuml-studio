@@ -10,7 +10,8 @@ struct DocumentView: View {
   @ObservedObject var document: StudioDocument
   @State var layout = "All"
   @State var vertical = false
-  @State var zoom = 1.0
+  @State private var templatesVisible = false
+  var zoom: Double { document.zoom }
   var body: some View {
     VStack(spacing: 0) {
       HStack {
@@ -21,6 +22,7 @@ struct DocumentView: View {
           Text("Диаграмма").tag("Diagram")
         }.frame(width: 220)
         Toggle("Вертикально", isOn: $vertical).toggleStyle(.button)
+        Button("Шаблоны") { templatesVisible = true }
         Spacer()
         Picker("Режим", selection: $document.modeOverride) {
           Text("Авто").tag(Optional<DiagramKind>.none)
@@ -29,18 +31,21 @@ struct DocumentView: View {
           Text("Только текст").tag(Optional(DiagramKind.unknown))
         }.frame(width: 150)
         Button {
-          zoom = max(0.2, zoom - 0.1)
+          document.zoom = max(0.2, zoom - 0.1)
         } label: {
           Image(systemName: "minus.magnifyingglass")
         }
-        Button("Вписать") { zoom = 0 }
-        Button("100%") { zoom = 1 }
+        Button("Вписать") { document.zoom = 0 }
+        Button("По ширине") { document.zoom = -1 }
+        Button("К выделению") { document.previewReturn += 1 }
+        Button("100%") { document.zoom = 1 }
         Button {
-          zoom = min(3, zoom + 0.1)
+          document.zoom = min(3, zoom + 0.1)
         } label: {
           Image(systemName: "plus.magnifyingglass")
         }
       }.padding(10)
+      if document.searchVisible { SearchBar(document: document) }
       Divider()
       HSplitView {
         if layout == "Code" {
@@ -65,6 +70,14 @@ struct DocumentView: View {
       if !document.operationError.isEmpty {
         Text(document.operationError).font(.caption).foregroundStyle(.orange).padding(8)
       }
+      if let line = document.errorLine {
+        Button("Перейти к ошибке: строка \(line + 1)") {
+          let lines = document.source.components(separatedBy: "\n")
+          let offset = lines.prefix(line).reduce(0) { $0 + ($1 as NSString).length + 1 }
+          document.navigationRange = NSRange(
+            location: min(offset, (document.source as NSString).length), length: 0)
+        }
+      }
       if !document.error.isEmpty {
         Text(document.error).font(.caption).foregroundStyle(.red).textSelection(.enabled).frame(
           maxWidth: .infinity, alignment: .leading
@@ -78,13 +91,19 @@ struct DocumentView: View {
             ? "Конструктор синхронизирован"
             : "Последнее корректное состояние · конструктор недоступен")
       }.font(.caption).foregroundStyle(.secondary).padding(8)
-    }
+    }.sheet(isPresented: $document.paletteVisible) { CommandPalette(document: document) }
+      .sheet(isPresented: $templatesVisible) { TemplatesView(document: document) }
   }
   var editor: some View {
     CodeEditor(
-      text: $document.source, diagnosticLine: document.errorLine,
-      selectedSourceRange: document.parsed.source == document.source
-        ? document.parsed.elements.first { $0.id == document.selection }?.range : nil
+      text: $document.source, focusRequested: document.focusRequest == "editor",
+      onFocused: { document.focusRequest = "" },
+      onCursor: { range in
+        guard document.parsed.source == document.source else { return }
+        document.navigationRange = nil
+        document.selection = DocumentNavigation.element(at: range.location, in: document.parsed)?.id
+      }, diagnosticLine: document.errorLine,
+      selectedSourceRange: document.navigationRange
     ).frame(minWidth: 250, minHeight: 180)
   }
   var preview: some View {

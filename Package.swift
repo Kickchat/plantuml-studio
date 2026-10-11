@@ -11,6 +11,7 @@ let package = Package(
     .executableTarget(
       name: "PlantUMLStudio",
       dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule"]),
+    .executableTarget(name: "StudioBenchmark", dependencies: ["PlantUMLCore", "Rendering"]),
     .testTarget(
       name: "PlantUMLCoreTests",
       dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule"]),

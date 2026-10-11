@@ -13,6 +13,14 @@ import Rendering
       guard let document = workspace.current else { throw failure("No document") }
       try await wait { document.canEdit }
       let initial = document.source
+      guard DocumentNavigation.outline(document.parsed).contains(where: { !$0.children.isEmpty }),
+        StudioCommands.available(document).contains(where: { $0.id == "participant" })
+      else { throw failure("Outline or contextual commands missing") }
+      document.searchVisible = true
+      document.paletteVisible = true
+      try await Task.sleep(for: .milliseconds(200))
+      document.paletteVisible = false
+      document.searchVisible = false
       guard let message = document.parsed.elements.first(where: { $0.kind == "message" }) else {
         throw failure("No message")
       }
@@ -32,6 +40,11 @@ import Rendering
       guard !document.dirty, try String(contentsOf: document.url!, encoding: .utf8) == edited else {
         throw failure("Save round-trip failed")
       }
+      let beforeTemplate = document.source
+      document.edit { try TemplateLibrary.insert(TemplateLibrary.builtins[0], in: document.parsed) }
+      try await wait { document.source != beforeTemplate && document.canEdit }
+      document.undoManager.undo()
+      try await wait { document.source == beforeTemplate && document.canEdit }
       workspace.new(.er)
       guard let er = workspace.current else { throw failure("No ER document") }
       try await wait { er.canEdit }
@@ -53,6 +66,19 @@ import Rendering
         editor.frame.height > 50,
         abs(editor.frame.width - (editor.enclosingScrollView?.contentSize.width ?? 0)) < 1
       else { throw failure("Editor layout or document binding failed") }
+      if let entity = er.parsed.elements.first(where: { $0.kind == "entity" }),
+        let manager = editor.layoutManager, let container = editor.textContainer
+      {
+        editor.setSelectedRange(NSRange(location: entity.range.location, length: 0))
+        manager.ensureLayout(for: container)
+        let beforeHeight = manager.usedRect(for: container).height
+        editor.perform(NSSelectorFromString("toggleFold"))
+        manager.ensureLayout(for: container)
+        guard editor.string == er.source, manager.usedRect(for: container).height < beforeHeight
+        else { throw failure("Code folding did not collapse layout safely") }
+        editor.perform(NSSelectorFromString("toggleFold"))
+        manager.ensureLayout(for: container)
+      }
       let layout =
         "frame=\(editor.frame) bounds=\(editor.bounds) visible=\(editor.visibleRect) container=\(String(describing:editor.textContainer?.containerSize)) glyphs=\(String(describing:editor.layoutManager?.numberOfGlyphs)) origin=\(editor.textContainerOrigin) clip=\(String(describing:editor.enclosingScrollView?.contentView.frame)) ruler=\(String(describing:editor.enclosingScrollView?.verticalRulerView?.frame))"
       try Data(layout.utf8).write(to: directory.appendingPathComponent("editor-layout.txt"))
@@ -69,7 +95,7 @@ import Rendering
         }
       }
       try Data(
-        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\"]}"
+        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\"]}"
           .utf8
       ).write(to: directory.appendingPathComponent("result.json"))
       exit(0)

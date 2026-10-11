@@ -35,18 +35,34 @@ struct Preview: NSViewRepresentable {
   func updateNSView(_ web: WKWebView, context: Context) {
     context.coordinator.document = document
     context.coordinator.zoom = zoom
+    if document.focusRequest == "diagram" {
+      web.window?.makeFirstResponder(web)
+      DispatchQueue.main.async { document.focusRequest = "" }
+    }
+    if context.coordinator.returnRequest != document.previewReturn {
+      context.coordinator.returnRequest = document.previewReturn
+      context.coordinator.highlightSelection(web, scroll: true)
+    }
     let html =
       "<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><style>body { background:#f5f5f7; padding:24px; margin:0 } svg { background:white; max-width:none; }</style></head><body>\(document.svg)</body></html>"
     if context.coordinator.last != html {
       context.coordinator.last = html
-      web.loadHTMLString(html, baseURL: nil)
+      web.evaluateJavaScript("[window.scrollX,window.scrollY]") { result, _ in
+        if let offset = result as? [Double], offset.count == 2 {
+          context.coordinator.scrollOffset = offset
+        }
+        web.loadHTMLString(html, baseURL: nil)
+      }
     } else {
       context.coordinator.applyZoom(web)
+      context.coordinator.highlightSelection(web, scroll: false)
     }
   }
   func makeCoordinator() -> Coordinator { Coordinator(document) }
   @MainActor final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     var last = "", zoom = 1.0
+    var scrollOffset = [0.0, 0.0]
+    var returnRequest = 0
     var document: StudioDocument
     init(_ document: StudioDocument) { self.document = document }
     func userContentController(
@@ -55,6 +71,7 @@ struct Preview: NSViewRepresentable {
       guard let payload = message.body as? [String: String], let selected = element(payload) else {
         return
       }
+      document.navigationRange = selected.range
       document.selection = selected.id
     }
     func element(_ payload: [String: String]) -> Element? {
@@ -83,6 +100,7 @@ struct Preview: NSViewRepresentable {
         guard let self, let web, let payload = result as? [String: String],
           let selected = self.element(payload)
         else { return }
+        self.document.navigationRange = selected.range
         self.document.selection = selected.id
         let menu = NSMenu()
         let delete = NSMenuItem(
@@ -99,13 +117,57 @@ struct Preview: NSViewRepresentable {
       document.edit { try ConstructorOperations.delete(selected, in: document.parsed) }
     }
     func applyZoom(_ web: WKWebView) {
-      let script =
+      let expression =
         zoom > 0
-        ? "document.querySelector('svg').style.zoom='\(zoom)'"
-        : "const s=document.querySelector('svg'); if(s) s.style.zoom=Math.min((innerWidth-48)/s.viewBox.baseVal.width,(innerHeight-48)/s.viewBox.baseVal.height)"
+        ? String(zoom)
+        : zoom == -1
+          ? "(innerWidth-48)/s.viewBox.baseVal.width"
+          : "Math.min((innerWidth-48)/s.viewBox.baseVal.width,(innerHeight-48)/s.viewBox.baseVal.height)"
+      web.evaluateJavaScript(
+        "(() => { const s=document.querySelector('svg'); if(s) s.style.zoom=\(expression); })()",
+        completionHandler: nil)
+    }
+    func highlightSelection(_ web: WKWebView, scroll: Bool) {
+      guard document.parsed.source == document.source else { return }
+      var identifier = ""
+      var label = ""
+      if let element = document.parsed.elements.first(where: { $0.id == document.selection }) {
+        let ns = document.source as NSString
+        if ["entity", "participant"].contains(element.kind),
+          let range = element.fields["alias"] ?? element.fields["name"]
+        {
+          identifier = ns.substring(with: range).trimmingCharacters(
+            in: CharacterSet(charactersIn: "\" "))
+        }
+        if let range = element.fields["label"] ?? element.fields["name"] {
+          label = ns.substring(with: range).trimmingCharacters(
+            in: CharacterSet(charactersIn: "\" "))
+        }
+      }
+      if !identifier.isEmpty && element(["entity": identifier])?.id != document.selection {
+        identifier = ""
+      }
+      if !label.isEmpty && element(["text": label])?.id != document.selection { label = "" }
+      guard
+        let data = try? JSONSerialization.data(withJSONObject: [
+          "identifier": identifier, "label": label,
+        ]), let payload = String(data: data, encoding: .utf8)
+      else { return }
+      let script = """
+        (() => { document.querySelectorAll('[data-studio-selected]').forEach(n => {n.style.outline='';n.removeAttribute('data-studio-selected');});
+        const p=\(payload); let matches=[];
+        if(p.identifier) { matches=Array.from(document.querySelectorAll('[id]')).filter(n=>n.id==='elem_'+p.identifier); }
+        if(!matches.length && p.label) matches=Array.from(document.querySelectorAll('text')).filter(n=>n.textContent.trim()===p.label);
+        if(matches.length===1) { const n=matches[0]; n.setAttribute('data-studio-selected','true'); n.style.outline='2px solid #6b5cff'; if(\(scroll ? "true" : "false")) n.scrollIntoView({block:'center',inline:'center'}); } })()
+        """
       web.evaluateJavaScript(script, completionHandler: nil)
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyZoom(webView) }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      applyZoom(webView)
+      webView.evaluateJavaScript(
+        "window.scrollTo(\(scrollOffset[0]),\(scrollOffset[1]))", completionHandler: nil)
+      highlightSelection(webView, scroll: false)
+    }
     func webView(
       _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
       decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void

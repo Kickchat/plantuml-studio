@@ -21,6 +21,7 @@ import WebKit
       undoManager.registerUndo(withTarget: self) { target in target.source = previous }
       dirty = source != savedSource
       selection = nil
+      navigationRange = nil
       operationError = ""
       refresh()
     }
@@ -33,9 +34,17 @@ import WebKit
   @Published var dirty = false
   @Published var url: URL?
   @Published var modeOverride: DiagramKind? { didSet { refresh() } }
+  @Published var multiSelection: Set<Int> = []
   @Published var selection: Int?
+  @Published var paletteVisible = false
+  @Published var focusRequest = ""
+  @Published var searchVisible = false
+  @Published var navigationRange: NSRange?
+  @Published var previewReturn = 0
+  @Published var zoom = 1.0
   private var task: Task<Void, Never>?
   private var revision = 0
+  private var renderCancellation: RenderCancellation?
   init(source: String, url: URL? = nil) {
     self.source = source
     self.savedSource = url == nil ? "" : source
@@ -55,15 +64,20 @@ import WebKit
     revision += 1
     let version = revision
     let snapshot = source
-    let candidate = SourceDocument.reconcile(
-      SourceDocument.parse(source, mode: modeOverride), with: parsed)
-    if !candidate.diagnostics.isEmpty { error = candidate.diagnostics.joined(separator: "\n") }
+    let previous = parsed
+    let mode = modeOverride
     task?.cancel()
+    renderCancellation?.cancel()
+    let cancellation = RenderCancellation()
+    renderCancellation = cancellation
     task = Task {
       try? await Task.sleep(for: .milliseconds(350))
       guard !Task.isCancelled else { return }
-      let result = await Task.detached { () -> Result<RenderOutput, Error> in
-        Result { try Renderer.render(snapshot) }
+      let (candidate, result) = await Task.detached {
+        let candidate = SourceDocument.reconcile(
+          SourceDocument.parse(snapshot, mode: mode), with: previous)
+        let result = Result { try Renderer.render(snapshot, cancellation: cancellation) }
+        return (candidate, result)
       }.value
       guard !Task.isCancelled, version == revision else { return }
       switch result {

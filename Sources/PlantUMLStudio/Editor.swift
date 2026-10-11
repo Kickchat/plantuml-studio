@@ -4,6 +4,9 @@ import SwiftUI
 
 struct CodeEditor: NSViewRepresentable {
   @Binding var text: String
+  var focusRequested = false
+  var onFocused: (() -> Void)? = nil
+  var onCursor: ((NSRange) -> Void)? = nil
   var diagnosticLine: Int? = nil
   var selectedSourceRange: NSRange? = nil
   func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -34,6 +37,7 @@ struct CodeEditor: NSViewRepresentable {
     editor.textContainer?.containerSize = NSSize(
       width: 500, height: CGFloat.greatestFiniteMagnitude)
     editor.delegate = context.coordinator
+    editor.layoutManager?.delegate = editor
     editor.string = text
     scroll.documentView = editor
     let ruler = LineNumberRuler(scrollView: scroll, orientation: .verticalRuler)
@@ -48,6 +52,10 @@ struct CodeEditor: NSViewRepresentable {
   func updateNSView(_ view: NSScrollView, context: Context) {
     context.coordinator.parent = self
     guard let editor = view.documentView as? NSTextView else { return }
+    if focusRequested {
+      editor.window?.makeFirstResponder(editor)
+      DispatchQueue.main.async { onFocused?() }
+    }
     if editor.string != text,
       editor.shouldChangeText(
         in: NSRange(location: 0, length: (editor.string as NSString).length),
@@ -77,7 +85,9 @@ struct CodeEditor: NSViewRepresentable {
       NSMaxRange(range) <= (editor.string as NSString).length
     {
       context.coordinator.lastSelection = range
+      context.coordinator.selectingProgrammatically = true
       editor.setSelectedRange(range)
+      context.coordinator.selectingProgrammatically = false
       editor.scrollRangeToVisible(range)
     }
     if selectedSourceRange == nil { context.coordinator.lastSelection = nil }
@@ -87,6 +97,7 @@ struct CodeEditor: NSViewRepresentable {
     var parent: CodeEditor
     var lastSelection: NSRange?
     var model: ParsedDocument?
+    var selectingProgrammatically = false
     init(_ parent: CodeEditor) { self.parent = parent }
     func textDidChange(_ notification: Notification) {
       guard let editor = notification.object as? NSTextView else { return }
@@ -98,6 +109,7 @@ struct CodeEditor: NSViewRepresentable {
       guard let editor = notification.object as? NSTextView, let layout = editor.layoutManager,
         let model, model.source == editor.string
       else { return }
+      if !selectingProgrammatically { parent.onCursor?(editor.selectedRange()) }
       let ns = editor.string as NSString
       layout.removeTemporaryAttribute(
         .underlineStyle, forCharacterRange: NSRange(location: 0, length: ns.length))
@@ -117,6 +129,14 @@ struct CodeEditor: NSViewRepresentable {
           break
         }
       }
+    }
+    func textView(
+      _ textView: NSTextView, completions words: [String], forPartialWordRange charRange: NSRange,
+      indexOfSelectedItem index: UnsafeMutablePointer<Int>?
+    ) -> [String] {
+      guard let model else { return words }
+      return EditorAssistance.completions(
+        prefix: (textView.string as NSString).substring(with: charRange), in: model)
     }
     func highlight(_ editor: NSTextView) {
       model = SourceDocument.parse(editor.string)
@@ -173,17 +193,96 @@ struct CodeEditor: NSViewRepresentable {
     }
   }
 }
-@MainActor final class IndentingTextView: NSTextView {
+@MainActor final class IndentingTextView: NSTextView, @preconcurrency NSLayoutManagerDelegate {
+  private var folded: [NSRange] = []
   override func insertNewline(_ sender: Any?) {
     let source = string as NSString
     let selection = selectedRange()
     let lineRange = source.lineRange(
       for: NSRange(location: min(selection.location, source.length), length: 0))
-    let line = source.substring(with: lineRange)
-    let indent = String(line.prefix { $0 == " " || $0 == "\t" })
-    super.insertNewline(sender)
-    if !indent.isEmpty { insertText(indent, replacementRange: selectedRange()) }
+    let line = source.substring(
+      with: NSRange(location: lineRange.location, length: selection.location - lineRange.location))
+    let newline = string.contains("\r\n") ? "\r\n" : "\n"
+    let insertion = EditorAssistance.newline(after: line, newline: newline)
+    insertText(insertion, replacementRange: selection)
+    let parts = insertion.components(separatedBy: newline)
+    if parts.count == 3 {
+      setSelectedRange(
+        NSRange(
+          location: selection.location + (newline as NSString).length
+            + (parts[1] as NSString).length, length: 0))
+    }
   }
+  override func menu(for event: NSEvent) -> NSMenu? {
+    let menu = super.menu(for: event) ?? NSMenu()
+    menu.addItem(.separator())
+    for (title, action) in [
+      ("Автодополнение", #selector(showCompletion)),
+      ("Свернуть / развернуть блок", #selector(toggleFold)),
+      ("Форматировать выделение", #selector(formatSelection)),
+    ] {
+      let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+      item.target = self
+      menu.addItem(item)
+    }
+    return menu
+  }
+  @objc private func showCompletion() { complete(nil) }
+  @objc private func formatSelection() {
+    let model = SourceDocument.parse(string)
+    guard selectedRange().length > 0,
+      let proposed = try? QuickOperations.format(selectedRange(), in: model)
+    else { return }
+    insertText(
+      proposed, replacementRange: NSRange(location: 0, length: (string as NSString).length))
+  }
+  @objc private func toggleFold() {
+    guard let layout = layoutManager else { return }
+    let model = SourceDocument.parse(string)
+    let caret = selectedRange().location
+    guard
+      let element = model.elements.filter({
+        $0.fullRange.map { NSLocationInRange(caret, $0) } == true
+      }).min(by: { ($0.fullRange?.length ?? Int.max) < ($1.fullRange?.length ?? Int.max) }),
+      let range = EditorAssistance.foldableBody(of: element, in: model)
+    else { return }
+    let hiding = !folded.contains(range)
+    if hiding { folded.append(range) } else { folded.removeAll { $0 == range } }
+    let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+    for index in glyphs.location..<NSMaxRange(glyphs) {
+      layout.setNotShownAttribute(hiding, forGlyphAt: index)
+    }
+    layout.invalidateLayout(forCharacterRange: range, actualCharacterRange: nil)
+    needsDisplay = true
+  }
+  func layoutManager(
+    _ layoutManager: NSLayoutManager,
+    shouldSetLineFragmentRect lineFragmentRect: UnsafeMutablePointer<NSRect>,
+    lineFragmentUsedRect: UnsafeMutablePointer<NSRect>,
+    baselineOffset: UnsafeMutablePointer<CGFloat>, in textContainer: NSTextContainer,
+    forGlyphRange glyphRange: NSRange
+  ) -> Bool {
+    let range = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+    if folded.contains(where: {
+      range.location >= $0.location && NSMaxRange(range) <= NSMaxRange($0)
+    }) {
+      lineFragmentRect.pointee.size.height = 0.001
+      lineFragmentUsedRect.pointee.size.height = 0.001
+      baselineOffset.pointee = 0
+      return true
+    }
+    return false
+  }
+  override func didChangeText() {
+    if let layout = layoutManager {
+      for index in 0..<layout.numberOfGlyphs {
+        layout.setNotShownAttribute(false, forGlyphAt: index)
+      }
+    }
+    folded.removeAll()
+    super.didChangeText()
+  }
+
 }
 
 @MainActor private final class EditorScrollView: NSScrollView {

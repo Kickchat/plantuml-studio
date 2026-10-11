@@ -8,12 +8,22 @@ import WebKit
 
 struct Constructor: View {
   @ObservedObject var document: StudioDocument
+  @FocusState private var outlineFocused: Bool
+  @State private var selectedIDs: Set<Int> = []
+  @State private var attributesVisible = false
+  @State private var attributesText = ""
+  @State var outlineQuery = ""
   @State var fieldValues: [String: String] = [:]
 
   var selected: Element? { document.parsed.elements.first { $0.id == document.selection } }
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Text("Конструктор").font(.headline)
+      Text("Конструктор").font(.headline).onChange(of: document.focusRequest) {
+        if document.focusRequest == "properties" {
+          outlineFocused = true
+          document.focusRequest = ""
+        }
+      }
       Menu("Добавить элемент") {
         if document.parsed.kind == .sequence {
           ForEach(ParticipantType.allCases.map(\.rawValue), id: \.self) { type in
@@ -39,17 +49,55 @@ struct Constructor: View {
           Button("Связь") { add(relationTemplate) }
         }
       }.disabled(!document.canEdit)
-      List(selection: $document.selection) {
-        ForEach(document.parsed.elements) { element in
-          HStack {
-            Image(systemName: element.kind == "unsupported" ? "lock" : "square.stack")
-            Text(element.text.trimmingCharacters(in: .whitespaces)).lineLimit(2).font(
-              .system(size: 12, design: .monospaced))
-          }.padding(.leading, CGFloat(element.depth) * 10).tag(element.id)
+      TextField("Поиск структуры", text: $outlineQuery).textFieldStyle(.roundedBorder).focused(
+        $outlineFocused)
+      List(selection: $selectedIDs) {
+        if outlineQuery.isEmpty {
+          ForEach(DocumentNavigation.outline(document.parsed)) { node in
+            OutlineRow(node: node, document: document)
+          }
+        } else {
+          ForEach(DocumentNavigation.search(outlineQuery, in: document.parsed)) { element in
+            Text(element.text.trimmingCharacters(in: .whitespaces)).tag(element.id)
+          }
         }
+      }.onChange(of: selectedIDs) {
+        document.multiSelection = selectedIDs
+        if selectedIDs.count == 1 {
+          if document.selection != selectedIDs.first {
+            document.navigationRange =
+              document.parsed.elements.first { $0.id == selectedIDs.first }?.range
+          }
+          document.selection = selectedIDs.first
+        }
+      }.onChange(of: document.selection) {
+        if let selection = document.selection, !selectedIDs.contains(selection) {
+          selectedIDs = [selection]
+        }
+        if document.selection == nil { selectedIDs = [] }
       }
       if let selected {
         Text(selected.kind.capitalized).font(.headline)
+        if selected.kind == "entity" {
+          Button("Добавить несколько атрибутов…") { attributesVisible = true }
+            .sheet(isPresented: $attributesVisible) {
+              VStack {
+                Text("Атрибуты: по одному на строку")
+                TextEditor(text: $attributesText).font(.system(.body, design: .monospaced)).frame(
+                  width: 450, height: 200)
+                HStack {
+                  Button("Отмена") { attributesVisible = false }
+                  Button("Добавить") {
+                    document.edit {
+                      try QuickOperations.addAttributes(
+                        attributesText, to: selected, in: document.parsed)
+                    }
+                    attributesVisible = false
+                  }
+                }
+              }.padding()
+            }
+        }
         if selected.kind == "unsupported" {
           Text("Эта конструкция сохраняется в исходнике. Редактируйте её в коде.").font(.caption)
         }
