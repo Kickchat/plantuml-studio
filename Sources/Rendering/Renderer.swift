@@ -1,10 +1,27 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 public struct RenderOutput: Sendable {
   public let data: Data
   public let diagnostics: String
 }
+public final class RenderCancellation: @unchecked Sendable {
+  private let lock = NSLock()
+  private var cancelled = false
+  public init() {}
+  public func cancel() {
+    lock.lock()
+    cancelled = true
+    lock.unlock()
+  }
+  public var isCancelled: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return cancelled
+  }
+}
+
 public enum Renderer {
   private static let cache = RenderCache()
   private static let slots = DispatchSemaphore(value: 2)
@@ -19,7 +36,10 @@ public enum Renderer {
     return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(
       "Runtime")
   }
-  public static func render(_ source: String, format: String = "svg") throws -> RenderOutput {
+  public static func render(
+    _ source: String, format: String = "svg", cancellation: RenderCancellation? = nil
+  ) throws -> RenderOutput {
+    if cancellation?.isCancelled == true { throw CancellationError() }
     guard ["svg", "png"].contains(format) else {
       throw NSError(
         domain: "Renderer", code: 3,
@@ -29,12 +49,17 @@ public enum Renderer {
       String(format: "%02x", $0)
     }.joined()
     if let cached = cache.get(key) { return cached }
-    guard slots.wait(timeout: .now() + 15) == .success else {
-      throw NSError(
-        domain: "Renderer", code: 4,
-        userInfo: [NSLocalizedDescriptionKey: "Очередь рендеринга занята"])
+    let queueDeadline = Date().addingTimeInterval(15)
+    while slots.wait(timeout: .now() + 0.05) != .success {
+      if cancellation?.isCancelled == true { throw CancellationError() }
+      guard Date() < queueDeadline else {
+        throw NSError(
+          domain: "Renderer", code: 4,
+          userInfo: [NSLocalizedDescriptionKey: "Очередь рендеринга занята"])
+      }
     }
     defer { slots.signal() }
+    if cancellation?.isCancelled == true { throw CancellationError() }
     let root = runtime()
     let fm = FileManager.default
     let temp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -66,9 +91,15 @@ public enum Renderer {
     process.standardError = errors
     try process.run()
     let deadline = Date().addingTimeInterval(15)
-    while process.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.025) }
+    while process.isRunning && Date() < deadline {
+      if cancellation?.isCancelled == true {
+        kill(process.processIdentifier, SIGKILL)
+        throw CancellationError()
+      }
+      Thread.sleep(forTimeInterval: 0.025)
+    }
     if process.isRunning {
-      process.terminate()
+      kill(process.processIdentifier, SIGKILL)
       throw NSError(
         domain: "Renderer", code: 1,
         userInfo: [NSLocalizedDescriptionKey: "Рендеринг превысил 15 секунд"])

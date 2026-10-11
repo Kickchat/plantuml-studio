@@ -25,7 +25,8 @@ import WebKit
   }
   var current: StudioDocument? { documents.first { $0.id == selected } }
   func new(_ kind: DiagramKind) {
-    let doc = StudioDocument(source: kind == .er ? erTemplate : sequenceTemplate)
+    let doc = StudioDocument(
+      source: kind == .component ? componentTemplate : kind == .er ? erTemplate : sequenceTemplate)
     documents.append(doc)
     selected = doc.id
   }

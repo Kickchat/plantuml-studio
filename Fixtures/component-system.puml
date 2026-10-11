@@ -1,0 +1,15 @@
+@startuml
+package "Application" as App #LightBlue {
+  component "API Service" as API
+  interface Contract
+  node Host {
+    database Store
+  }
+}
+cloud "External system" as External {
+  component Provider
+}
+API --> Contract : implements
+API ..> Store : SQL
+API --> Provider : HTTPS
+@enduml

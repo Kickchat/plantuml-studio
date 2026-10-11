@@ -1,6 +1,6 @@
 import Foundation
 
-public enum DiagramKind: String, Sendable { case sequence, er, unknown }
+public enum DiagramKind: String, Sendable { case sequence, er, component, unknown }
 public struct Element: Identifiable, Sendable {
   public var id: Int
   public init(
@@ -56,6 +56,9 @@ public enum SourceDocument {
     return result as String
   }
   public static func parse(_ source: String, mode: DiagramKind? = nil) -> ParsedDocument {
+    if mode == .component || (mode == nil && ComponentSyntax.recognizes(source)) {
+      return ComponentSyntax.parse(source)
+    }
     var elements: [Element] = []
     var diagnostics: [String] = []
     let starts = source.components(separatedBy: "\n").filter {

@@ -71,3 +71,17 @@ public struct ERModel: Sendable {
     }
   }
 }
+
+public struct ERContract: DiagramModuleContract {
+  public init() {}
+  public var kind: DiagramKind { .er }
+  public var declarationKinds: Set<String> { ["entity"] }
+  public func identityFields(of element: Element) -> [String] {
+    switch element.kind {
+    case "entity": return [element.fields["alias"] == nil ? "name" : "alias"]
+    case "attribute": return ["name"]
+    case "relation": return ["from", "to"]
+    default: return element.fields.keys.sorted()
+    }
+  }
+}

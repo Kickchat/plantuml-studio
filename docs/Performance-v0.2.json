@@ -1,0 +1,30 @@
+[
+  {
+    "cachedRenderMilliseconds" : 0.044375,
+    "lines" : 100,
+    "operationMilliseconds" : 0.053875,
+    "parseMilliseconds" : 1.467333,
+    "renderMilliseconds" : 1161.798166
+  },
+  {
+    "cachedRenderMilliseconds" : 0.042583,
+    "lines" : 300,
+    "operationMilliseconds" : 0.136708,
+    "parseMilliseconds" : 1.285917,
+    "renderMilliseconds" : 871.551292
+  },
+  {
+    "cachedRenderMilliseconds" : 0.048,
+    "lines" : 500,
+    "operationMilliseconds" : 0.266167,
+    "parseMilliseconds" : 2.650209,
+    "renderMilliseconds" : 871.314875
+  },
+  {
+    "cachedRenderMilliseconds" : 0.109167,
+    "lines" : 1000,
+    "operationMilliseconds" : 0.901625,
+    "parseMilliseconds" : 3.864583,
+    "renderMilliseconds" : 1032.788708
+  }
+]

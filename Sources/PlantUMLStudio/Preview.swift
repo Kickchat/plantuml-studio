@@ -3,12 +3,15 @@ import ERModule
 import PlantUMLCore
 import Rendering
 import SequenceModule
+import StudioDesign
 import SwiftUI
 import WebKit
 
 struct Preview: NSViewRepresentable {
+  @Environment(\.colorScheme) private var colorScheme
   @ObservedObject var document: StudioDocument
   let zoom: Double
+  var editable = true
   func makeNSView(context: Context) -> WKWebView {
     let config = WKWebViewConfiguration()
     config.userContentController.add(context.coordinator, name: "selectElement")
@@ -29,24 +32,49 @@ struct Preview: NSViewRepresentable {
       WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     let web = PreviewWebView(frame: .zero, configuration: config)
     web.navigationDelegate = context.coordinator
+    web.appearanceChanged = { [weak coordinator = context.coordinator] web in
+      coordinator?.applyTheme(web)
+    }
     web.contextAction = { event in context.coordinator.contextMenu(web, event: event) }
     return web
   }
   func updateNSView(_ web: WKWebView, context: Context) {
     context.coordinator.document = document
+    context.coordinator.editable = editable
     context.coordinator.zoom = zoom
+    context.coordinator.dark = colorScheme == .dark
+    web.underPageBackgroundColor = DesignToken.background.value(dark: colorScheme == .dark).color
+    context.coordinator.applyTheme(web)
+    if document.focusRequest == "diagram" {
+      web.window?.makeFirstResponder(web)
+      DispatchQueue.main.async { document.focusRequest = "" }
+    }
+    if context.coordinator.returnRequest != document.previewReturn {
+      context.coordinator.returnRequest = document.previewReturn
+      context.coordinator.highlightSelection(web, scroll: true)
+    }
     let html =
-      "<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><style>body { background:#f5f5f7; padding:24px; margin:0 } svg { background:white; max-width:none; }</style></head><body>\(document.svg)</body></html>"
+      "<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><style>body { padding:24px; margin:0 } svg { max-width:none; }</style></head><body><div id=\"diagram-paper\" style=\"display:inline-block;color-scheme:light;background:\(DesignToken.diagramPaper.value(dark:false).css);color:\(DesignToken.diagramInk.value(dark:false).css)\">\(document.svg)</div></body></html>"
     if context.coordinator.last != html {
       context.coordinator.last = html
-      web.loadHTMLString(html, baseURL: nil)
+      web.evaluateJavaScript("[window.scrollX,window.scrollY]") { result, _ in
+        if let offset = result as? [Double], offset.count == 2 {
+          context.coordinator.scrollOffset = offset
+        }
+        web.loadHTMLString(html, baseURL: nil)
+      }
     } else {
       context.coordinator.applyZoom(web)
+      context.coordinator.highlightSelection(web, scroll: false)
     }
   }
   func makeCoordinator() -> Coordinator { Coordinator(document) }
   @MainActor final class Coordinator: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     var last = "", zoom = 1.0
+    var scrollOffset = [0.0, 0.0]
+    var returnRequest = 0
+    var editable = true
+    var dark = false
     var document: StudioDocument
     init(_ document: StudioDocument) { self.document = document }
     func userContentController(
@@ -55,6 +83,7 @@ struct Preview: NSViewRepresentable {
       guard let payload = message.body as? [String: String], let selected = element(payload) else {
         return
       }
+      document.navigationRange = selected.range
       document.selection = selected.id
     }
     func element(_ payload: [String: String]) -> Element? {
@@ -74,6 +103,7 @@ struct Preview: NSViewRepresentable {
       return matches.count == 1 ? matches[0] : nil
     }
     func contextMenu(_ web: WKWebView, event: NSEvent) {
+      guard editable else { return }
       let point = web.convert(event.locationInWindow, from: nil)
       let y = web.isFlipped ? point.y : web.bounds.height - point.y
       let script = """
@@ -83,6 +113,7 @@ struct Preview: NSViewRepresentable {
         guard let self, let web, let payload = result as? [String: String],
           let selected = self.element(payload)
         else { return }
+        self.document.navigationRange = selected.range
         self.document.selection = selected.id
         let menu = NSMenu()
         let delete = NSMenuItem(
@@ -98,14 +129,67 @@ struct Preview: NSViewRepresentable {
       else { return }
       document.edit { try ConstructorOperations.delete(selected, in: document.parsed) }
     }
-    func applyZoom(_ web: WKWebView) {
+    func applyTheme(_ web: WKWebView) {
+      dark = web.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+      web.underPageBackgroundColor = DesignToken.background.value(dark: dark).color
+      let background = DesignToken.background.value(dark: dark).css
       let script =
-        zoom > 0
-        ? "document.querySelector('svg').style.zoom='\(zoom)'"
-        : "const s=document.querySelector('svg'); if(s) s.style.zoom=Math.min((innerWidth-48)/s.viewBox.baseVal.width,(innerHeight-48)/s.viewBox.baseVal.height)"
+        "(() => { if(document.body) { document.body.style.backgroundColor='\(background)'; document.documentElement.style.colorScheme='\(dark ? "dark" : "light")'; } })()"
       web.evaluateJavaScript(script, completionHandler: nil)
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { applyZoom(webView) }
+    func applyZoom(_ web: WKWebView) {
+      let expression =
+        zoom > 0
+        ? String(zoom)
+        : zoom == -1
+          ? "(innerWidth-48)/s.viewBox.baseVal.width"
+          : "Math.min((innerWidth-48)/s.viewBox.baseVal.width,(innerHeight-48)/s.viewBox.baseVal.height)"
+      web.evaluateJavaScript(
+        "(() => { const s=document.querySelector('svg'); if(s) s.style.zoom=\(expression); })()",
+        completionHandler: nil)
+    }
+    func highlightSelection(_ web: WKWebView, scroll: Bool) {
+      guard document.parsed.source == document.source else { return }
+      var identifier = ""
+      var label = ""
+      if let element = document.parsed.elements.first(where: { $0.id == document.selection }) {
+        let ns = document.source as NSString
+        if ["entity", "participant", "component", "interface", "container"].contains(element.kind),
+          let range = element.fields["alias"] ?? element.fields["name"]
+        {
+          identifier = ns.substring(with: range).trimmingCharacters(
+            in: CharacterSet(charactersIn: "\" "))
+        }
+        if let range = element.fields["label"] ?? element.fields["name"] {
+          label = ns.substring(with: range).trimmingCharacters(
+            in: CharacterSet(charactersIn: "\" "))
+        }
+      }
+      if !identifier.isEmpty && element(["entity": identifier])?.id != document.selection {
+        identifier = ""
+      }
+      if !label.isEmpty && element(["text": label])?.id != document.selection { label = "" }
+      guard
+        let data = try? JSONSerialization.data(withJSONObject: [
+          "identifier": identifier, "label": label,
+        ]), let payload = String(data: data, encoding: .utf8)
+      else { return }
+      let script = """
+        (() => { document.querySelectorAll('[data-studio-selected]').forEach(n => {n.style.outline='';n.removeAttribute('data-studio-selected');});
+        const p=\(payload); let matches=[];
+        if(p.identifier) { matches=Array.from(document.querySelectorAll('[id]')).filter(n=>n.id==='elem_'+p.identifier); }
+        if(!matches.length && p.label) matches=Array.from(document.querySelectorAll('text')).filter(n=>n.textContent.trim()===p.label);
+        if(matches.length===1) { const n=matches[0]; n.setAttribute('data-studio-selected','true'); n.style.outline='2px solid \(DesignToken.accent.value(dark:dark).css)'; if(\(scroll ? "true" : "false")) n.scrollIntoView({block:'center',inline:'center'}); } })()
+        """
+      web.evaluateJavaScript(script, completionHandler: nil)
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      applyTheme(webView)
+      applyZoom(webView)
+      webView.evaluateJavaScript(
+        "window.scrollTo(\(scrollOffset[0]),\(scrollOffset[1]))", completionHandler: nil)
+      highlightSelection(webView, scroll: false)
+    }
     func webView(
       _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
       decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
@@ -114,6 +198,11 @@ struct Preview: NSViewRepresentable {
 }
 
 @MainActor private final class PreviewWebView: WKWebView {
+  var appearanceChanged: ((WKWebView) -> Void)?
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    appearanceChanged?(self)
+  }
   var contextAction: ((NSEvent) -> Void)?
   override func rightMouseDown(with event: NSEvent) { contextAction?(event) }
 }

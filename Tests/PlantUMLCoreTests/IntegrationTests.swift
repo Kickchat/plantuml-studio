@@ -98,3 +98,38 @@ extension IntegrationTests {
     XCTAssertFalse(try Renderer.render(source).data.isEmpty)
   }
 }
+
+extension IntegrationTests {
+  func testTemplateCorpusRenders() throws {
+    for template in TemplateLibrary.builtins {
+      let output = try Renderer.render("@startuml\n" + template.fragment + "\n@enduml\n")
+      XCTAssertTrue(
+        String(data: output.data, encoding: .utf8)?.contains("<svg") == true, template.name)
+    }
+  }
+  func testCancelledRenderAndNextRender() throws {
+    let token = RenderCancellation()
+    token.cancel()
+    XCTAssertThrowsError(
+      try Renderer.render("@startuml\nA -> B : cancelled\n@enduml", cancellation: token)
+    ) { error in
+      XCTAssertTrue(error is CancellationError)
+    }
+    XCTAssertFalse(
+      try Renderer.render("@startuml\nA -> B : after cancellation\n@enduml").data.isEmpty)
+  }
+}
+
+extension IntegrationTests {
+  func testCancellationStopsActiveProcess() throws {
+    let token = RenderCancellation()
+    let source =
+      "@startuml\nparticipant A\nparticipant B\n"
+      + (0..<1000).map { "A -> B : cancellation test \($0)" }.joined(separator: "\n") + "\n@enduml"
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { token.cancel() }
+    XCTAssertThrowsError(try Renderer.render(source, cancellation: token)) { error in
+      XCTAssertTrue(error is CancellationError)
+    }
+    XCTAssertFalse(try Renderer.render("@startuml\nA -> B : slot released\n@enduml").data.isEmpty)
+  }
+}

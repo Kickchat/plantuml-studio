@@ -1,19 +1,25 @@
 import AppKit
+import ComponentModule
 import ERModule
 import PlantUMLCore
 import Rendering
 import SequenceModule
+import StudioDesign
 import SwiftUI
 import WebKit
 
 let sequenceTemplate =
   "@startuml\ntitle Authentication\nactor User\nparticipant API\nUser -> API : Sign in\nactivate API\nalt Success\n  API --> User : Welcome\nelse Invalid credentials\n  API --> User : Try again\nend\ndeactivate API\n@enduml\n"
+let componentTemplate = "@startuml\n" + ComponentTemplates.builtins[0].fragment + "\n@enduml\n"
 let erTemplate =
   "@startuml\n!pragma layout smetana\nentity \"User\" as User {\n  * id : integer <<PK>>\n  --\n  name : text\n}\nentity \"Session\" as Session {\n  * id : integer <<PK>>\n  --\n  user_id : integer <<FK>>\n}\nUser ||--o{ Session : owns\n@enduml\n"
 
 @main struct PlantUMLStudioApp: App {
   @NSApplicationDelegateAdaptor(ApplicationDelegate.self) private var delegate
+  @StateObject private var theme = ThemeStore.shared
   @StateObject private var workspace = Workspace()
+  @StateObject private var shortcuts = ShortcutStore()
+  @StateObject private var updates = UpdateController()
   var body: some Scene {
     WindowGroup("PlantUML Studio") {
       VStack(spacing: 0) {
@@ -27,32 +33,74 @@ let erTemplate =
             Menu {
               Button("Sequence") { workspace.new(.sequence) }
               Button("ER Diagram") { workspace.new(.er) }
+              Button("Component Diagram") { workspace.new(.component) }
             } label: {
               Image(systemName: "plus")
             }
-          }.padding(8)
+          }.padding(.horizontal, 12).padding(.vertical, 6)
         }
-        Divider()
+        Divider().overlay(DesignToken.border.color)
         if let document = workspace.current {
-          DocumentView(document: document).id(document.id)
+          DocumentView(workspace: workspace, document: document).id(document.id)
         } else {
           ContentUnavailableView("Откройте диаграмму", systemImage: "doc.text")
         }
-      }.frame(minWidth: 1000, minHeight: 650).background(Color(nsColor: .windowBackgroundColor))
+      }.frame(minWidth: 1000, minHeight: 650).background(DesignToken.background.color)
+        .onAppear { updates.applicationDelegate = delegate }
+        .modifier(StudioStyle())
         .background(WindowConnection(delegate: delegate, workspace: workspace)).onReceive(
+          NotificationCenter.default.publisher(for: .studioOpenHistory)
+        ) { note in
+          if let source = note.object as? String {
+            let doc = StudioDocument(source: source)
+            workspace.documents.append(doc)
+            workspace.selected = doc.id
+          }
+        }.onReceive(
           NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
         ) { _ in workspace.persist() }
     }.commands {
+      CommandGroup(replacing: .appInfo) {
+        Button("О PlantUML Studio") {
+          NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "PlantUML Studio"])
+        }
+        Button("Проверить обновления…") { updates.checkForUpdates() }
+          .disabled(!updates.canCheck)
+      }
+      CommandMenu("Конструктор") {
+        if let doc = workspace.current {
+          ForEach(StudioCommands.available(doc).filter { shortcuts.keys[$0.id]?.isEmpty == false })
+          { command in
+            Button(command.name, action: command.action).keyboardShortcut(
+              KeyEquivalent(Character(shortcuts.keys[command.id]!)), modifiers: [.command, .option])
+          }
+        }
+      }
       CommandGroup(replacing: .newItem) {
         Button("Новая Sequence") { workspace.new(.sequence) }.keyboardShortcut("n")
         Button("Новая ER") { workspace.new(.er) }.keyboardShortcut(
           "n", modifiers: [.command, .shift])
+        Button("Новая Component") { workspace.new(.component) }
         Button("Открыть…") { workspace.open() }.keyboardShortcut("o")
       }
       CommandGroup(replacing: .undoRedo) {
         Button("Отменить") { workspace.current?.undoManager.undo() }.keyboardShortcut("z")
         Button("Повторить") { workspace.current?.undoManager.redo() }.keyboardShortcut(
           "z", modifiers: [.command, .shift])
+      }
+      CommandMenu("Навигация") {
+        Button("Палитра команд…") { workspace.current?.paletteVisible = true }.keyboardShortcut(
+          "p", modifiers: [.command, .shift])
+        Button("Найти…") { workspace.current?.searchVisible = true }.keyboardShortcut("f")
+        Button("Заменить…") { workspace.current?.searchVisible = true }.keyboardShortcut(
+          "f", modifiers: [.command, .option])
+        Button("Увеличить") {
+          if let doc = workspace.current { doc.zoom = min(3, max(0.2, doc.zoom) + 0.1) }
+        }.keyboardShortcut("+")
+        Button("Уменьшить") {
+          if let doc = workspace.current { doc.zoom = max(0.2, doc.zoom - 0.1) }
+        }.keyboardShortcut("-")
+        Button("Масштаб 100%") { workspace.current?.zoom = 1 }.keyboardShortcut("0")
       }
       CommandGroup(replacing: .saveItem) {
         Button("Сохранить") { workspace.current?.save() }.keyboardShortcut("s")
@@ -61,6 +109,16 @@ let erTemplate =
         Button("Экспорт SVG…") { workspace.current?.export("svg") }
         Button("Экспорт PNG…") { workspace.current?.export("png") }
       }
+    }
+    Settings {
+      TabView {
+        AppearanceSettings(theme: theme).tabItem {
+          Label("Appearance", systemImage: "paintpalette")
+        }
+        ShortcutSettings(store: shortcuts).modifier(StudioStyle()).tabItem {
+          Label("Shortcuts", systemImage: "keyboard")
+        }
+      }.padding(12).modifier(StudioStyle())
     }
   }
 }
@@ -73,7 +131,11 @@ struct TabButton: View {
     HStack {
       Button(document.name + (document.dirty ? " •" : ""), action: select).buttonStyle(.plain)
       Button(action: close) { Image(systemName: "xmark").font(.caption) }.buttonStyle(.plain)
-    }.padding(8).background(active ? Color.accentColor.opacity(0.12) : Color.clear).clipShape(
-      RoundedRectangle(cornerRadius: 6))
+    }.font(.system(size: 12, weight: active ? .medium : .regular))
+      .foregroundStyle(active ? DesignToken.primaryText.color : DesignToken.secondaryText.color)
+      .padding(.horizontal, 12).padding(.vertical, 7).background(
+        active ? DesignToken.selection.color : DesignToken.surface.color
+      ).clipShape(
+        RoundedRectangle(cornerRadius: DesignMetrics.cornerRadius))
   }
 }
