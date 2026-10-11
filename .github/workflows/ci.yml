@@ -2,7 +2,7 @@ name: Verify macOS
 on:
   pull_request:
   push:
-    branches: [feature/release-updates]
+    branches: [main, feature/release-updates]
 permissions:
   contents: read
 jobs:

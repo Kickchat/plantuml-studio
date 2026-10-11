@@ -20,13 +20,6 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
       SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
-      UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
-      UPDATE_BUCKET: ${{ vars.UPDATE_BUCKET }}
-      UPDATE_PREFIX: ${{ vars.UPDATE_PREFIX }}
-      AWS_DEFAULT_REGION: ${{ vars.UPDATE_REGION }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.UPDATE_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_SECRET_ACCESS_KEY }}
-      AWS_ENDPOINT_URL: ${{ vars.UPDATE_S3_ENDPOINT }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,14 +52,8 @@ jobs:
       - name: Create immutable draft GitHub Release
         run: |
           gh release create "$RELEASE_TAG" dist/updates/* --draft --verify-tag --generate-notes --title "PlantUML Studio ${RELEASE_TAG#v}"
-      - name: Deliver verified public files and publish signed feed last
-        env:
-          SPARKLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/sparkle-private.key
-        run: |
-          command -v aws || brew install awscli
-          python3 scripts/publish-updates.py
-      - name: Publish GitHub Release
-        run: gh release edit "$RELEASE_TAG" --draft=false --latest
+      - name: Verify draft assets, publish release and verify anonymous downloads
+        run: python3 scripts/publish-updates.py
       - name: Remove temporary credentials
         if: always()
         run: |

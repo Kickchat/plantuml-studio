@@ -5,7 +5,7 @@
 - Sparkle 2.10: Stable HTTPS appcast, signed feeds and EdDSA archives, built-in update UI, background checks and menu command.
 - Update installation waits for saving or explicitly discarding unsaved diagrams; cancellation postpones installation.
 - Version.json synchronizes application version/build with release tags and signed appcasts.
-- Pull-request verification and gated Developer ID/notarized release workflow, private GitHub Releases with a public HTTPS mirror.
+- Pull-request verification and gated Developer ID/notarized release workflow, public GitHub Releases with a signed latest-release feed.
 - Source publication, MIT license and release documentation.
 - Synchronous Undo callback compatible with the macOS SDK used on CI.
 

@@ -17,8 +17,35 @@ def load(name, file):
     return module
 version=load('version','version.py')
 appcast=load('appcast','validate-appcast.py')
+channel=load('channel','github-channel.py')
+publisher=load('publisher','publish-updates.py')
 
 class ReleaseTests(unittest.TestCase):
+    def test_github_stable_feed_and_immutable_archives(self):
+        feed, archive = channel.urls('Kickchat/plantuml-studio', 'v0.4.0')
+        self.assertEqual(feed, 'https://github.com/Kickchat/plantuml-studio/releases/latest/download/appcast.xml')
+        self.assertEqual(archive, 'https://github.com/Kickchat/plantuml-studio/releases/download/v0.4.0/')
+        for repository, tag in [('owner/repo/extra', 'v0.4.0'), ('owner/repo', 'v0.4.0-beta'), ('https://github.com/repo', 'v0.4.0')]:
+            with self.assertRaises(ValueError): channel.urls(repository, tag)
+
+    def test_draft_mismatch_prevents_publication(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            source=root/'dist/updates';source.mkdir(parents=True)
+            (source/'appcast.xml').write_bytes(b'signed feed')
+            calls=[]
+            def command(arguments, **kwargs):
+                calls.append(arguments)
+                (Path(arguments[arguments.index('--dir')+1])/'appcast.xml').write_bytes(b'wrong feed')
+            previous=Path.cwd()
+            try:
+                os.chdir(root)
+                with patch.dict(os.environ, {'RELEASE_TAG':'v0.4.0','GITHUB_REPOSITORY':'Kickchat/plantuml-studio'}), patch.object(publisher.subprocess,'run',side_effect=command):
+                    with self.assertRaisesRegex(RuntimeError,'hash mismatch'): publisher.main()
+            finally: os.chdir(previous)
+            self.assertEqual(len(calls),1)
+            self.assertEqual(calls[0][2],'download')
+
     def test_release_version_matches_plist(self):
         with tempfile.TemporaryDirectory() as temporary:
             path=Path(temporary)/'Info.plist'
