@@ -1,0 +1,26 @@
+name: Verify macOS
+on:
+  pull_request:
+  push:
+    branches: [feature/release-updates]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify Apple Silicon runner and version
+        run: |
+          test "$(uname -m)" = arm64
+          python3 scripts/version.py check
+      - name: Tests
+        run: |
+          swift package resolve
+          python3 -m unittest discover -s scripts/tests -v
+          ./scripts/test.sh
+      - name: Release build (local signature only, never published)
+        run: ./scripts/build.sh
+      - name: Verify embedded application
+        run: codesign --verify --deep --strict 'dist/PlantUML Studio.app'

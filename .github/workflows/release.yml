@@ -1,0 +1,74 @@
+name: Signed stable release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: stable-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-15
+    environment: release
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      DEVELOPER_ID_APPLICATION: ${{ vars.DEVELOPER_ID_APPLICATION }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+      UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+      UPDATE_BUCKET: ${{ vars.UPDATE_BUCKET }}
+      UPDATE_PREFIX: ${{ vars.UPDATE_PREFIX }}
+      AWS_DEFAULT_REGION: ${{ vars.UPDATE_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.UPDATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_SECRET_ACCESS_KEY }}
+      AWS_ENDPOINT_URL: ${{ vars.UPDATE_S3_ENDPOINT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate tag, approved main history, credentials and unused release
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          test "$(uname -m)" = arm64
+          python3 scripts/version.py check --tag "$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD origin/main
+          python3 scripts/release-preflight.py
+      - name: Tests
+        run: |
+          swift package resolve
+          python3 -m unittest discover -s scripts/tests -v
+          ./scripts/test.sh
+      - name: Import signing credentials into temporary runner keychain
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: python3 scripts/import-signing.py
+      - name: Build, sign, notarize, staple and sign appcast
+        env:
+          SPARKLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/sparkle-private.key
+        run: bash scripts/release.sh
+      - name: Create immutable draft GitHub Release
+        run: |
+          gh release create "$RELEASE_TAG" dist/updates/* --draft --verify-tag --generate-notes --title "PlantUML Studio ${RELEASE_TAG#v}"
+      - name: Deliver verified public files and publish signed feed last
+        env:
+          SPARKLE_PRIVATE_KEY_FILE: ${{ runner.temp }}/sparkle-private.key
+        run: |
+          command -v aws || brew install awscli
+          python3 scripts/publish-updates.py
+      - name: Publish GitHub Release
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" || true
+          rm -f "$RUNNER_TEMP/sparkle-private.key" "$RUNNER_TEMP/developer-id.p12"

@@ -19,6 +19,7 @@ let erTemplate =
   @StateObject private var theme = ThemeStore.shared
   @StateObject private var workspace = Workspace()
   @StateObject private var shortcuts = ShortcutStore()
+  @StateObject private var updates = UpdateController()
   var body: some Scene {
     WindowGroup("PlantUML Studio") {
       VStack(spacing: 0) {
@@ -45,6 +46,7 @@ let erTemplate =
           ContentUnavailableView("Откройте диаграмму", systemImage: "doc.text")
         }
       }.frame(minWidth: 1000, minHeight: 650).background(DesignToken.background.color)
+        .onAppear { updates.applicationDelegate = delegate }
         .modifier(StudioStyle())
         .background(WindowConnection(delegate: delegate, workspace: workspace)).onReceive(
           NotificationCenter.default.publisher(for: .studioOpenHistory)
@@ -58,6 +60,13 @@ let erTemplate =
           NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
         ) { _ in workspace.persist() }
     }.commands {
+      CommandGroup(replacing: .appInfo) {
+        Button("О PlantUML Studio") {
+          NSApp.orderFrontStandardAboutPanel(options: [.applicationName: "PlantUML Studio"])
+        }
+        Button("Проверить обновления…") { updates.checkForUpdates() }
+          .disabled(!updates.canCheck)
+      }
       CommandMenu("Конструктор") {
         if let doc = workspace.current {
           ForEach(StudioCommands.available(doc).filter { shortcuts.keys[$0.id]?.isEmpty == false })

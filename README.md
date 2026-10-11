@@ -8,9 +8,13 @@
 
 Откройте `dist/PlantUML Studio.app`. Java и PlantUML находятся внутри приложения, сеть не нужна. Сборка для Apple Silicon; macOS 14+.
 
+[GitHub Releases](https://github.com/Kickchat/plantuml-studio/releases) — архив релизов для участников приватного репозитория. Публичный установочный ZIP и канал обновлений будут доступны на отдельном HTTPS-хостинге после настройки владельцем; стабильная 0.4.0 пока не опубликована. После первого подписанного релиза распакуйте ZIP и перенесите приложение в `/Applications`. Следующие версии устанавливаются через «PlantUML Studio → Проверить обновления».
+
 ## Сборка
 
 Требуется Xcode с macOS SDK. В этой среде проверены Xcode 27.0 и Swift 6.4.
+
+Sparkle 2.10 загружается Swift Package Manager по зафиксированной версии и checksum (первое разрешение зависимости требует сети). Для локальной сборки без feed/public key автоматические обновления отключены; редактор работает локально. Версия и build задаются только в `Version.json`.
 
 ```sh
 ./scripts/build.sh
@@ -59,3 +63,5 @@ Runtime включён в историю проекта как зафиксир�
 Ветки `release/v0.2` и `release/v0.3` сохранены отдельно; автоматического слияния в `main` нет.
 
 Редизайн и темы v0.3.1: [описание и проверка](docs/Release-v0.3.1.md), [ТЗ](docs/Requirements-Appearance.md). Реализация находится в `feature/appearance-redesign`.
+
+Публикация и автообновления: [RELEASING.md](RELEASING.md), [CHANGELOG.md](CHANGELOG.md). Инфраструктура 0.4.0 подготовлена в `feature/release-updates`; нужны секреты Developer ID/notarization/Sparkle и публичный HTTPS-канал. Обновление установленного приложения между двумя подписанными релизами ещё не проверено.

@@ -22,3 +22,5 @@ DerivedData/
 *.certSigningRequest
 .secrets/
 .aws/
+__pycache__/
+*.pyc
