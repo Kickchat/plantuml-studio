@@ -1,4 +1,5 @@
 import PlantUMLCore
+import StudioDesign
 import SwiftUI
 
 struct OutlineRow: View {
@@ -99,12 +100,14 @@ struct SearchBar: View {
         Button("Заменить") { replace(all: false) }
         Button("Все") { replace(all: true) }
       }
-      if !failure.isEmpty { Text(failure).foregroundStyle(.red).font(.caption) }
-    }.textFieldStyle(.roundedBorder).padding(8)
-      .onChange(of: document.source) { index = -1 }
-      .onChange(of: query) { index = -1 }
-      .onChange(of: regex) { index = -1 }
-      .onChange(of: caseSensitive) { index = -1 }
+      if !failure.isEmpty { Text(failure).foregroundStyle(DesignToken.error.color).font(.caption) }
+    }.textFieldStyle(.roundedBorder).padding(DesignMetrics.spacing).background(
+      DesignToken.elevatedSurface.color
+    )
+    .onChange(of: document.source) { index = -1 }
+    .onChange(of: query) { index = -1 }
+    .onChange(of: regex) { index = -1 }
+    .onChange(of: caseSensitive) { index = -1 }
   }
   func navigate(_ step: Int) {
     do {

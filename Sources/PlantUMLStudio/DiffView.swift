@@ -3,6 +3,7 @@ import ComponentModule
 import ERModule
 import PlantUMLCore
 import SequenceModule
+import StudioDesign
 import SwiftUI
 
 struct Comparison: Identifiable {
@@ -46,7 +47,7 @@ struct DiffView: View {
       if let result {
         if result.textOnly {
           Text("Структура не распознана или типы различаются: текстовый diff").foregroundStyle(
-            .orange)
+            DesignToken.warning.color)
         }
         ScrollViewReader { proxy in
           VStack {
@@ -89,11 +90,12 @@ struct DiffView: View {
                 Text(statusLabel(change.status)).frame(width: 130, alignment: .leading)
                 Text(change.after?.text ?? change.before?.text ?? change.reason).lineLimit(2)
                 Spacer()
-                Text(change.reason).font(.caption).foregroundStyle(.secondary)
+                Text(change.reason).font(.caption).foregroundStyle(DesignToken.secondaryText.color)
               }
             }.buttonStyle(.plain).disabled(
               change.status == .ambiguous || change.status == .textFallback)
-          }.frame(height: 130)
+          }.scrollContentBackground(.hidden).background(DesignToken.surface.color).frame(
+            height: 130)
         }
       } else {
         ProgressView("Сравнение…")
@@ -104,12 +106,14 @@ struct DiffView: View {
           Preview(document: right, zoom: zoom, editable: false)
         }.frame(height: 230)
         if !left.error.isEmpty || !right.error.isEmpty {
-          Text("Одна из версий не рендерится; её текст доступен выше").foregroundStyle(.orange)
-            .font(.caption)
+          Text("Одна из версий не рендерится; её текст доступен выше").foregroundStyle(
+            DesignToken.warning.color
+          )
+          .font(.caption)
         }
       }
-    }.padding(16).frame(minWidth: 1100, minHeight: 720).background(
-      Color(nsColor: .windowBackgroundColor)
+    }.modifier(StudioStyle()).padding(16).frame(minWidth: 1100, minHeight: 720).background(
+      DesignToken.background.color
     )
     .task {
       let a = comparison.left
@@ -128,7 +132,7 @@ struct DiffView: View {
   }
   func line(_ value: String?, _ number: Int?, _ status: DiffStatus, leftSide: Bool) -> some View {
     HStack(alignment: .top) {
-      Text(number.map(String.init) ?? "").foregroundStyle(.secondary).frame(
+      Text(number.map(String.init) ?? "").foregroundStyle(DesignToken.secondaryText.color).frame(
         width: 45, alignment: .trailing)
       Text(value ?? " ").textSelection(.enabled).frame(width: 430, alignment: .leading)
     }.font(.system(size: 12, design: .monospaced)).padding(4).background(
@@ -136,7 +140,7 @@ struct DiffView: View {
   }
   func color(_ status: DiffStatus, leftSide: Bool) -> Color {
     if status == .unchanged { return .clear }
-    return (leftSide ? Color.red : Color.green).opacity(0.12)
+    return leftSide ? DesignToken.diffRemoved.color : DesignToken.diffAdded.color
   }
   func statusLabel(_ status: DiffStatus) -> String {
     switch status {

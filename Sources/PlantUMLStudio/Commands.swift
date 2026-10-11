@@ -1,5 +1,6 @@
 import AppKit
 import PlantUMLCore
+import StudioDesign
 import SwiftUI
 
 struct StudioCommand: Identifiable {
@@ -130,14 +131,14 @@ struct CommandPalette: View {
               HStack {
                 Text(command.name)
                 Spacer()
-                Text(command.shortcut).foregroundStyle(.secondary)
+                Text(command.shortcut).foregroundStyle(DesignToken.secondaryText.color)
               }.padding(8)
-                .background(selected == index ? Color.accentColor.opacity(0.15) : Color.clear)
+                .background(selected == index ? DesignToken.selection.color : Color.clear)
             }.buttonStyle(.plain)
           }
         }
       }.frame(height: 300)
-    }.padding(16).frame(width: 520).onAppear { focused = true }
+    }.padding(16).frame(width: 520).modifier(StudioStyle()).onAppear { focused = true }
       .onChange(of: query) { selected = 0 }
       .onKeyPress(.downArrow) {
         selected = min(max(0, matches.count - 1), selected + 1)

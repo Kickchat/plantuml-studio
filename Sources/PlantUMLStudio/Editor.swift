@@ -1,8 +1,10 @@
 import AppKit
 import PlantUMLCore
+import StudioDesign
 import SwiftUI
 
 struct CodeEditor: NSViewRepresentable {
+  @Environment(\.colorScheme) private var colorScheme
   @Binding var text: String
   var focusRequested = false
   var onFocused: (() -> Void)? = nil
@@ -12,9 +14,12 @@ struct CodeEditor: NSViewRepresentable {
   func makeCoordinator() -> Coordinator { Coordinator(self) }
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = EditorScrollView()
+    scroll.clipsToBounds = true
+    scroll.contentView.clipsToBounds = true
     scroll.hasVerticalScroller = true
     scroll.hasHorizontalScroller = true
     let editor = IndentingTextView(frame: NSRect(x: 0, y: 0, width: 500, height: 500))
+    editor.clipsToBounds = true
     editor.isRichText = false
     editor.allowsUndo = false
     editor.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
@@ -31,8 +36,8 @@ struct CodeEditor: NSViewRepresentable {
     editor.isVerticallyResizable = true
     editor.isHorizontallyResizable = false
     editor.autoresizingMask = [.width]
-    editor.backgroundColor = .textBackgroundColor
-    editor.textColor = .textColor
+    editor.backgroundColor = DesignToken.surface.nsColor
+    editor.textColor = DesignToken.primaryText.nsColor
     editor.textContainer?.widthTracksTextView = true
     editor.textContainer?.containerSize = NSSize(
       width: 500, height: CGFloat.greatestFiniteMagnitude)
@@ -42,6 +47,7 @@ struct CodeEditor: NSViewRepresentable {
     scroll.documentView = editor
     let ruler = LineNumberRuler(scrollView: scroll, orientation: .verticalRuler)
     ruler.clientView = editor
+    ruler.clipsToBounds = true
     ruler.ruleThickness = 48
     scroll.verticalRulerView = ruler
     scroll.hasVerticalRuler = true
@@ -52,6 +58,10 @@ struct CodeEditor: NSViewRepresentable {
   func updateNSView(_ view: NSScrollView, context: Context) {
     context.coordinator.parent = self
     guard let editor = view.documentView as? NSTextView else { return }
+    if context.coordinator.colorScheme != colorScheme {
+      context.coordinator.colorScheme = colorScheme
+      EditorColors.apply(to: editor)
+    }
     if focusRequested {
       editor.window?.makeFirstResponder(editor)
       DispatchQueue.main.async { onFocused?() }
@@ -66,19 +76,25 @@ struct CodeEditor: NSViewRepresentable {
       editor.didChangeText()
       context.coordinator.highlight(editor)
     }
-    editor.textStorage?.removeAttribute(
-      .backgroundColor, range: NSRange(location: 0, length: (editor.string as NSString).length))
-    if let line = diagnosticLine {
-      let source = editor.string as NSString
-      var offset = 0
-      for (index, raw) in editor.string.components(separatedBy: "\n").enumerated() {
-        if index == line, offset < source.length {
-          editor.textStorage?.addAttribute(
-            .backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.15),
-            range: NSRange(location: offset, length: (raw as NSString).length))
-          break
+    if context.coordinator.diagnosticSource != text
+      || context.coordinator.diagnosticLine != diagnosticLine
+    {
+      context.coordinator.diagnosticSource = text
+      context.coordinator.diagnosticLine = diagnosticLine
+      editor.textStorage?.removeAttribute(
+        .backgroundColor, range: NSRange(location: 0, length: (editor.string as NSString).length))
+      if let line = diagnosticLine {
+        let source = editor.string as NSString
+        var offset = 0
+        for (index, raw) in editor.string.components(separatedBy: "\n").enumerated() {
+          if index == line, offset < source.length {
+            editor.textStorage?.addAttribute(
+              .backgroundColor, value: DesignToken.error.nsColor.withAlphaComponent(0.15),
+              range: NSRange(location: offset, length: (raw as NSString).length))
+            break
+          }
+          offset += (raw as NSString).length + 1
         }
-        offset += (raw as NSString).length + 1
       }
     }
     if let range = selectedSourceRange, range != context.coordinator.lastSelection,
@@ -95,6 +111,9 @@ struct CodeEditor: NSViewRepresentable {
   }
   @MainActor final class Coordinator: NSObject, NSTextViewDelegate {
     var parent: CodeEditor
+    var colorScheme: ColorScheme?
+    var diagnosticLine: Int?
+    var diagnosticSource = ""
     var lastSelection: NSRange?
     var model: ParsedDocument?
     var selectingProgrammatically = false
@@ -113,6 +132,7 @@ struct CodeEditor: NSViewRepresentable {
       let ns = editor.string as NSString
       layout.removeTemporaryAttribute(
         .underlineStyle, forCharacterRange: NSRange(location: 0, length: ns.length))
+      editor.needsDisplay = true
       let caret = editor.selectedRange().location
       for element in model.elements where ["block", "entity", "container"].contains(element.kind) {
         guard let extent = element.fullRange else { continue }
@@ -140,34 +160,22 @@ struct CodeEditor: NSViewRepresentable {
     }
     func highlight(_ editor: NSTextView) {
       model = SourceDocument.parse(editor.string)
-      guard let storage = editor.textStorage else { return }
-      let range = NSRange(location: 0, length: storage.length)
-      storage.beginEditing()
-      storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
-      for (pattern, color) in [
-        (
-          #"\b(actor|participant|boundary|control|component|interface|package|node|cloud|frame|folder|entity|database|collections|queue|alt|else|opt|loop|par|break|critical|group|end|activate|deactivate|destroy|note|title|autonumber)\b"#,
-          NSColor.systemPurple
-        ), (#"(?m)^\s*'.*$"#, NSColor.secondaryLabelColor),
-        (#"@startuml|@enduml|--?>+|<--?"#, NSColor.systemBlue),
-      ] {
-        let regex = try! NSRegularExpression(pattern: pattern)
-        for match in regex.matches(in: editor.string, range: range) {
-          storage.addAttribute(.foregroundColor, value: color, range: match.range)
-        }
-      }
-      storage.endEditing()
+      EditorColors.apply(to: editor)
     }
+
   }
 }
 
 @MainActor final class LineNumberRuler: NSRulerView {
   override func drawHashMarksAndLabels(in rect: NSRect) {
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+    NSBezierPath(rect: bounds).addClip()
     guard let editor = clientView as? NSTextView, let layout = editor.layoutManager,
       let container = editor.textContainer
     else { return }
-    NSColor.windowBackgroundColor.setFill()
-    rect.fill()
+    DesignToken.elevatedSurface.nsColor.setFill()
+    rect.intersection(bounds).fill()
     let visible = editor.visibleRect
     let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
     let characters = layout.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
@@ -176,7 +184,7 @@ struct CodeEditor: NSViewRepresentable {
     var number = 1
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-      .foregroundColor: NSColor.secondaryLabelColor,
+      .foregroundColor: DesignToken.secondaryText.nsColor,
     ]
     while index < source.length {
       let range = source.lineRange(for: NSRange(location: index, length: 0))
@@ -195,6 +203,27 @@ struct CodeEditor: NSViewRepresentable {
 }
 @MainActor final class IndentingTextView: NSTextView, @preconcurrency NSLayoutManagerDelegate {
   private var folded: [NSRange] = []
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    EditorColors.apply(to: self)
+  }
+  override func drawBackground(in rect: NSRect) {
+    super.drawBackground(in: rect)
+    guard let layout = layoutManager else { return }
+    let caret = selectedRange().location
+    var line = layout.extraLineFragmentRect
+    if layout.numberOfGlyphs > 0 && caret < (string as NSString).length {
+      let glyph = layout.glyphIndexForCharacter(at: caret)
+      line = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+    }
+    if line.height <= 0 { line = NSRect(x: 0, y: 0, width: bounds.width, height: 17) }
+    let highlight = NSRect(
+      x: 0, y: line.minY + textContainerOrigin.y, width: bounds.width, height: line.height
+    ).intersection(rect)
+    DesignToken.activeLine.nsColor.setFill()
+    highlight.fill()
+  }
+
   override func insertNewline(_ sender: Any?) {
     let source = string as NSString
     let selection = selectedRange()
@@ -293,12 +322,29 @@ struct CodeEditor: NSViewRepresentable {
 
 @MainActor private final class EditorScrollView: NSScrollView {
   override func tile() {
+    let previousOrigin = contentView.bounds.origin
     super.tile()
-    guard let editor = documentView as? NSTextView, contentSize.width > 0 else { return }
+    // Overlay-style scrollers can leave the ruler on top of the text viewport.
+    // Reserve its width explicitly so the first characters remain visible.
+    if rulersVisible, hasVerticalRuler, let ruler = verticalRulerView {
+      var viewport = contentView.frame
+      let left = ruler.frame.maxX
+      if viewport.minX < left {
+        viewport.size.width -= left - viewport.minX
+        viewport.origin.x = left
+        contentView.frame = viewport
+      }
+    }
+    let viewportSize = contentView.bounds.size
+    guard let editor = documentView as? NSTextView, viewportSize.width > 0 else { return }
     let size = NSSize(
-      width: contentSize.width, height: max(contentSize.height, editor.frame.height))
+      width: viewportSize.width, height: max(viewportSize.height, editor.frame.height))
     if editor.frame.size != size { editor.setFrameSize(size) }
     if editor.frame.origin != .zero { editor.setFrameOrigin(.zero) }
-    editor.minSize = NSSize(width: contentSize.width, height: contentSize.height)
+    editor.minSize = viewportSize
+    // This editor wraps lines and has no horizontal document extent.
+    // AppKit may shift the clip origin when reserving the ruler's viewport.
+    let y = max(0, min(previousOrigin.y, editor.frame.height - viewportSize.height))
+    contentView.setBoundsOrigin(NSPoint(x: 0, y: y))
   }
 }

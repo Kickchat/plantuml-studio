@@ -3,10 +3,12 @@ import ERModule
 import PlantUMLCore
 import Rendering
 import SequenceModule
+import StudioDesign
 import SwiftUI
 import WebKit
 
 struct Preview: NSViewRepresentable {
+  @Environment(\.colorScheme) private var colorScheme
   @ObservedObject var document: StudioDocument
   let zoom: Double
   var editable = true
@@ -30,6 +32,9 @@ struct Preview: NSViewRepresentable {
       WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
     let web = PreviewWebView(frame: .zero, configuration: config)
     web.navigationDelegate = context.coordinator
+    web.appearanceChanged = { [weak coordinator = context.coordinator] web in
+      coordinator?.applyTheme(web)
+    }
     web.contextAction = { event in context.coordinator.contextMenu(web, event: event) }
     return web
   }
@@ -37,6 +42,9 @@ struct Preview: NSViewRepresentable {
     context.coordinator.document = document
     context.coordinator.editable = editable
     context.coordinator.zoom = zoom
+    context.coordinator.dark = colorScheme == .dark
+    web.underPageBackgroundColor = DesignToken.background.value(dark: colorScheme == .dark).color
+    context.coordinator.applyTheme(web)
     if document.focusRequest == "diagram" {
       web.window?.makeFirstResponder(web)
       DispatchQueue.main.async { document.focusRequest = "" }
@@ -46,7 +54,7 @@ struct Preview: NSViewRepresentable {
       context.coordinator.highlightSelection(web, scroll: true)
     }
     let html =
-      "<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><style>body { background:#f5f5f7; padding:24px; margin:0 } svg { background:white; max-width:none; }</style></head><body>\(document.svg)</body></html>"
+      "<html><head><meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\"><style>body { padding:24px; margin:0 } svg { max-width:none; }</style></head><body><div id=\"diagram-paper\" style=\"display:inline-block;color-scheme:light;background:\(DesignToken.diagramPaper.value(dark:false).css);color:\(DesignToken.diagramInk.value(dark:false).css)\">\(document.svg)</div></body></html>"
     if context.coordinator.last != html {
       context.coordinator.last = html
       web.evaluateJavaScript("[window.scrollX,window.scrollY]") { result, _ in
@@ -66,6 +74,7 @@ struct Preview: NSViewRepresentable {
     var scrollOffset = [0.0, 0.0]
     var returnRequest = 0
     var editable = true
+    var dark = false
     var document: StudioDocument
     init(_ document: StudioDocument) { self.document = document }
     func userContentController(
@@ -120,6 +129,14 @@ struct Preview: NSViewRepresentable {
       else { return }
       document.edit { try ConstructorOperations.delete(selected, in: document.parsed) }
     }
+    func applyTheme(_ web: WKWebView) {
+      dark = web.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+      web.underPageBackgroundColor = DesignToken.background.value(dark: dark).color
+      let background = DesignToken.background.value(dark: dark).css
+      let script =
+        "(() => { if(document.body) { document.body.style.backgroundColor='\(background)'; document.documentElement.style.colorScheme='\(dark ? "dark" : "light")'; } })()"
+      web.evaluateJavaScript(script, completionHandler: nil)
+    }
     func applyZoom(_ web: WKWebView) {
       let expression =
         zoom > 0
@@ -162,11 +179,12 @@ struct Preview: NSViewRepresentable {
         const p=\(payload); let matches=[];
         if(p.identifier) { matches=Array.from(document.querySelectorAll('[id]')).filter(n=>n.id==='elem_'+p.identifier); }
         if(!matches.length && p.label) matches=Array.from(document.querySelectorAll('text')).filter(n=>n.textContent.trim()===p.label);
-        if(matches.length===1) { const n=matches[0]; n.setAttribute('data-studio-selected','true'); n.style.outline='2px solid #6b5cff'; if(\(scroll ? "true" : "false")) n.scrollIntoView({block:'center',inline:'center'}); } })()
+        if(matches.length===1) { const n=matches[0]; n.setAttribute('data-studio-selected','true'); n.style.outline='2px solid \(DesignToken.accent.value(dark:dark).css)'; if(\(scroll ? "true" : "false")) n.scrollIntoView({block:'center',inline:'center'}); } })()
         """
       web.evaluateJavaScript(script, completionHandler: nil)
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      applyTheme(webView)
       applyZoom(webView)
       webView.evaluateJavaScript(
         "window.scrollTo(\(scrollOffset[0]),\(scrollOffset[1]))", completionHandler: nil)
@@ -180,6 +198,11 @@ struct Preview: NSViewRepresentable {
 }
 
 @MainActor private final class PreviewWebView: WKWebView {
+  var appearanceChanged: ((WKWebView) -> Void)?
+  override func viewDidChangeEffectiveAppearance() {
+    super.viewDidChangeEffectiveAppearance()
+    appearanceChanged?(self)
+  }
   var contextAction: ((NSEvent) -> Void)?
   override func rightMouseDown(with event: NSEvent) { contextAction?(event) }
 }

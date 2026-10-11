@@ -3,6 +3,7 @@ import ComponentModule
 import Foundation
 import PlantUMLCore
 import Rendering
+import StudioDesign
 import SwiftUI
 
 /// Exercises the real application process without accessibility permissions or
@@ -11,6 +12,9 @@ import SwiftUI
   static func run(workspace: Workspace, directory: URL) async {
     do {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      for name in ["failure.txt", "result.json"] {
+        try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+      }
       workspace.new(.sequence)
       guard let document = workspace.current else { throw failure("No document") }
       try await wait { document.canEdit }
@@ -96,6 +100,12 @@ import SwiftUI
           try png.write(to: directory.appendingPathComponent("window.png"))
         }
       }
+      er.source = er.source.replacingOccurrences(
+        of: "  name : text",
+        with: "  name : text\n" + (0..<80).map { "  field_\($0) : text" }.joined(separator: "\n"))
+      try await wait { er.canEdit && editor.string == er.source }
+      try await AppearanceSmoke.run(
+        document: er, editor: editor, window: editor.window!, directory: directory)
       guard try document.history.versions(for: document.url!.standardizedFileURL.path).count > 0
       else { throw failure("Saved history missing") }
       workspace.new(.component)
@@ -133,10 +143,25 @@ import SwiftUI
         }
       }
       diffWindow.orderOut(nil)
+      for mode in [ThemeMode.light, .dark] {
+        ThemeStore.shared.mode = mode
+        try await Task.sleep(for: .milliseconds(350))
+        try AppearanceSmoke.capture(
+          view, to: directory.appendingPathComponent("component-\(mode.rawValue).png"))
+        diffWindow.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(150))
+        try AppearanceSmoke.capture(
+          diffWindow.contentView!, to: directory.appendingPathComponent("diff-\(mode.rawValue).png")
+        )
+        diffWindow.orderOut(nil)
+      }
+      ThemeStore.shared.mode = .system
+      UserDefaults(suiteName: "PlantUMLStudio.AppearanceSmoke")?.removePersistentDomain(
+        forName: "PlantUMLStudio.AppearanceSmoke")
       component.undoManager.undo()
       try await wait { component.source == before && component.canEdit }
       try Data(
-        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\",\"fold-layout\",\"history\",\"component\",\"structural-diff\",\"diff-window\"]}"
+        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\",\"fold-layout\",\"history\",\"component\",\"structural-diff\",\"diff-window\",\"themes\",\"theme-state-preservation\",\"multiwindow-appearance\",\"webkit-theme\"]}"
           .utf8
       ).write(to: directory.appendingPathComponent("result.json"))
       exit(0)

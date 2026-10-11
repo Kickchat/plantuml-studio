@@ -4,6 +4,7 @@ import ERModule
 import PlantUMLCore
 import Rendering
 import SequenceModule
+import StudioDesign
 import SwiftUI
 import WebKit
 
@@ -15,6 +16,7 @@ let erTemplate =
 
 @main struct PlantUMLStudioApp: App {
   @NSApplicationDelegateAdaptor(ApplicationDelegate.self) private var delegate
+  @StateObject private var theme = ThemeStore.shared
   @StateObject private var workspace = Workspace()
   @StateObject private var shortcuts = ShortcutStore()
   var body: some Scene {
@@ -34,15 +36,16 @@ let erTemplate =
             } label: {
               Image(systemName: "plus")
             }
-          }.padding(8)
+          }.padding(.horizontal, 12).padding(.vertical, 6)
         }
-        Divider()
+        Divider().overlay(DesignToken.border.color)
         if let document = workspace.current {
           DocumentView(workspace: workspace, document: document).id(document.id)
         } else {
           ContentUnavailableView("Откройте диаграмму", systemImage: "doc.text")
         }
-      }.frame(minWidth: 1000, minHeight: 650).background(Color(nsColor: .windowBackgroundColor))
+      }.frame(minWidth: 1000, minHeight: 650).background(DesignToken.background.color)
+        .modifier(StudioStyle())
         .background(WindowConnection(delegate: delegate, workspace: workspace)).onReceive(
           NotificationCenter.default.publisher(for: .studioOpenHistory)
         ) { note in
@@ -98,7 +101,16 @@ let erTemplate =
         Button("Экспорт PNG…") { workspace.current?.export("png") }
       }
     }
-    Settings { ShortcutSettings(store: shortcuts) }
+    Settings {
+      TabView {
+        AppearanceSettings(theme: theme).tabItem {
+          Label("Appearance", systemImage: "paintpalette")
+        }
+        ShortcutSettings(store: shortcuts).modifier(StudioStyle()).tabItem {
+          Label("Shortcuts", systemImage: "keyboard")
+        }
+      }.padding(12).modifier(StudioStyle())
+    }
   }
 }
 struct TabButton: View {
@@ -110,7 +122,11 @@ struct TabButton: View {
     HStack {
       Button(document.name + (document.dirty ? " •" : ""), action: select).buttonStyle(.plain)
       Button(action: close) { Image(systemName: "xmark").font(.caption) }.buttonStyle(.plain)
-    }.padding(8).background(active ? Color.accentColor.opacity(0.12) : Color.clear).clipShape(
-      RoundedRectangle(cornerRadius: 6))
+    }.font(.system(size: 12, weight: active ? .medium : .regular))
+      .foregroundStyle(active ? DesignToken.primaryText.color : DesignToken.secondaryText.color)
+      .padding(.horizontal, 12).padding(.vertical, 7).background(
+        active ? DesignToken.selection.color : DesignToken.surface.color
+      ).clipShape(
+        RoundedRectangle(cornerRadius: DesignMetrics.cornerRadius))
   }
 }

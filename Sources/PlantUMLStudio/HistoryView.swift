@@ -1,5 +1,6 @@
 import AppKit
 import PlantUMLCore
+import StudioDesign
 import SwiftUI
 
 struct HistoryView: View {
@@ -23,11 +24,11 @@ struct HistoryView: View {
       }
       Text("Лимиты применяются при следующем сохранении. История независима от Undo.").font(
         .caption
-      ).foregroundStyle(.secondary)
+      ).foregroundStyle(DesignToken.secondaryText.color)
       List(versions.reversed()) { version in
         HStack {
           Text(version.date, format: .dateTime.year().month().day().hour().minute().second())
-          Text("\(version.source.utf8.count) байт").foregroundStyle(.secondary)
+          Text("\(version.source.utf8.count) байт").foregroundStyle(DesignToken.secondaryText.color)
           Spacer()
           Button("Сравнить") {
             comparison = Comparison(
@@ -39,10 +40,12 @@ struct HistoryView: View {
           }
           Button("Восстановить") { restore(version) }
         }
-      }.frame(height: 300)
-      if !failure.isEmpty { Text(failure).foregroundStyle(.red) }
+      }.scrollContentBackground(.hidden).background(DesignToken.surface.color).frame(height: 300)
+      if !failure.isEmpty { Text(failure).foregroundStyle(DesignToken.error.color) }
       if document.url == nil { Text("История начинается после сохранения файла на диск.") }
-    }.padding(20).frame(width: 800).onAppear { load() }.sheet(item: $comparison) {
+    }.padding(20).frame(width: 800).modifier(StudioStyle()).onAppear { load() }.sheet(
+      item: $comparison
+    ) {
       DiffView(comparison: $0)
     }
   }

@@ -4,6 +4,7 @@ import ERModule
 import PlantUMLCore
 import Rendering
 import SequenceModule
+import StudioDesign
 import SwiftUI
 import WebKit
 
@@ -61,6 +62,8 @@ struct Constructor: View {
           Button("Связь") { add(relationTemplate) }
         }
       }.disabled(!document.canEdit)
+      Text("СТРУКТУРА").font(.system(size: 10, weight: .semibold)).foregroundStyle(
+        DesignToken.secondaryText.color)
       TextField("Поиск структуры", text: $outlineQuery).textFieldStyle(.roundedBorder).focused(
         $outlineFocused)
       List(selection: $selectedIDs) {
@@ -73,7 +76,9 @@ struct Constructor: View {
             Text(element.text.trimmingCharacters(in: .whitespaces)).tag(element.id)
           }
         }
-      }.onChange(of: selectedIDs) {
+      }.scrollContentBackground(.hidden).background(DesignToken.surface.color).clipShape(
+        RoundedRectangle(cornerRadius: DesignMetrics.cornerRadius)
+      ).onChange(of: selectedIDs) {
         document.multiSelection = selectedIDs
         if selectedIDs.count == 1 {
           if document.selection != selectedIDs.first {
@@ -91,7 +96,7 @@ struct Constructor: View {
       if let selected {
         Text(selected.kind.capitalized).font(.headline)
         Text(SyntaxHints.hint(for: selected, in: document.parsed)).font(.caption).foregroundStyle(
-          .secondary
+          DesignToken.secondaryText.color
         ).textSelection(.enabled)
         if document.parsed.kind == .component
           && ["component", "interface", "container"].contains(selected.kind)
@@ -149,7 +154,8 @@ struct Constructor: View {
           VStack(alignment: .leading) {
             ForEach(selected.fields.keys.sorted(), id: \.self) { key in
               if let range = selected.fields[key] {
-                Text(fieldTitle(key)).font(.caption).foregroundStyle(.secondary)
+                Text(fieldTitle(key)).font(.caption).foregroundStyle(
+                  DesignToken.secondaryText.color)
                 if key == "label",
                   (document.parsed.source as NSString).substring(with: range).contains("\n")
                 {
@@ -287,7 +293,7 @@ struct Constructor: View {
                     }
                   }))
               Text("* обозначает обязательность; PK — подпись на диаграмме, без ограничений БД.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(DesignToken.secondaryText.color)
             }
             if selected.kind == "entity" {
               Button("Добавить атрибут") {
@@ -334,7 +340,9 @@ struct Constructor: View {
           }
         }.frame(maxHeight: 220)
       }
-    }.padding(12).onChange(of: document.selection) { fieldValues = [:] }.onChange(
+    }.padding(DesignMetrics.panelPadding).background(DesignToken.elevatedSurface.color).onChange(
+      of: document.selection
+    ) { fieldValues = [:] }.onChange(
       of: document.source
     ) { fieldValues = [:] }
   }

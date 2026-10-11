@@ -1,5 +1,6 @@
 import ComponentModule
 import PlantUMLCore
+import StudioDesign
 import SwiftUI
 
 @MainActor final class UserTemplates: ObservableObject {
@@ -39,7 +40,8 @@ struct TemplatesView: View {
             HStack {
               VStack(alignment: .leading) {
                 Text(template.name)
-                Text(template.category).font(.caption).foregroundStyle(.secondary)
+                Text(template.category).font(.caption).foregroundStyle(
+                  DesignToken.secondaryText.color)
               }
               Spacer()
               Button("Вставить") {
@@ -61,7 +63,7 @@ struct TemplatesView: View {
             }
           }
         }
-      }.frame(height: 220)
+      }.scrollContentBackground(.hidden).background(DesignToken.surface.color).frame(height: 220)
       HStack {
         TextField("Название", text: $name)
         TextField("Категория", text: $category)
@@ -96,6 +98,6 @@ struct TemplatesView: View {
         name = ""
         fragment = ""
       }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || fragment.isEmpty)
-    }.padding(20).frame(width: 700)
+    }.padding(20).frame(width: 700).modifier(StudioStyle())
   }
 }
