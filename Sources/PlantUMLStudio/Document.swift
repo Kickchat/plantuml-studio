@@ -18,7 +18,9 @@ import WebKit
     didSet {
       guard source != oldValue else { return }
       let previous = oldValue
-      undoManager.registerUndo(withTarget: self) { target in target.source = previous }
+      undoManager.registerUndo(withTarget: self) { target in
+        MainActor.assumeIsolated { target.source = previous }
+      }
       dirty = source != savedSource
       selection = nil
       selectedTextRange = nil

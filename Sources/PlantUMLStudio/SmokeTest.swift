@@ -15,6 +15,10 @@ import SwiftUI
       for name in ["failure.txt", "result.json"] {
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
       }
+      let updater = UpdateController()
+      guard updater.responds(to: NSSelectorFromString("updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:")),
+        updater.responds(to: NSSelectorFromString("allowedChannelsForUpdater:"))
+      else { throw failure("Sparkle security delegates are not connected") }
       workspace.new(.sequence)
       guard let document = workspace.current else { throw failure("No document") }
       try await wait { document.canEdit }

@@ -7,6 +7,7 @@
 - Version.json synchronizes application version/build with release tags and signed appcasts.
 - Pull-request verification and gated Developer ID/notarized release workflow, private GitHub Releases with a public HTTPS mirror.
 - Source publication, MIT license and release documentation.
+- Synchronous Undo callback compatible with the macOS SDK used on CI.
 
 ## 0.3.1
 
