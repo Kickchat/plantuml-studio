@@ -39,6 +39,9 @@ public struct TextEdit: Sendable {
   }
 }
 public enum SourceDocument {
+  public static func hasLineBreak(_ text: String) -> Bool {
+    text.rangeOfCharacter(from: .newlines) != nil
+  }
   public static func apply(_ edits: [TextEdit], to source: String) throws -> String {
     let ns = source as NSString
     let sorted = edits.sorted { $0.range.location < $1.range.location }
@@ -74,6 +77,7 @@ public enum SourceDocument {
     var stack: [String] = []
     var inComment = false
     var opaqueEnd: String?
+    var opaqueStart: Int?
     var hasER = false
     var hasSequence = false
     var openOffsets: [Int] = []
@@ -106,8 +110,14 @@ public enum SourceDocument {
         ["type", "target"]
       ),
       (
-        "note", #"^\s*note\s+(left|right|over)(?:\s+of)?\s*([^:]*):\s*(.*)$"#,
-        ["position", "target", "label"]
+        "note",
+        #"^\s*note\s+(left|right|over)(?:\s+of)?[ \t]*([^:#]*?)(?:[ \t]+(#[\w]+))?[ \t]*:[ \t]*(.*)$"#,
+        ["position", "target", "color", "label"]
+      ),
+      (
+        "diagramSetting",
+        #"^\s*skinparam\s+(backgroundColor|defaultFontName|defaultFontSize|sequenceMessageAlign)\s+([^{}\r\n]+?)\s*$"#,
+        ["type", "value"]
       ),
       ("title", #"^\s*title\s+(.+)$"#, ["label"]),
       ("autonumber", #"^\s*autonumber(?:\s+(.*))?$"#, ["options"]),
@@ -131,12 +141,20 @@ public enum SourceDocument {
       }
       if trim.hasPrefix("'") || trim.isEmpty { continue }
       if let closing = opaqueEnd {
+        if opaqueStart == nil { opaqueStart = elements.last?.range.location }
         elements.append(
           Element(
             kind: "unsupported", text: line,
             range: NSRange(location: offset, length: (line as NSString).length), depth: stack.count,
             fields: [:]))
-        if trim == closing { opaqueEnd = nil }
+        if trim == closing {
+          if let start = opaqueStart {
+            let end = min((source as NSString).length, offset + (raw as NSString).length + 1)
+            extents[start] = NSRange(location: start, length: end - start)
+          }
+          opaqueEnd = nil
+          opaqueStart = nil
+        }
         continue
       }
       if trim == "note" || (trim.hasPrefix("note ") && !trim.contains(":")) {
@@ -275,8 +293,8 @@ public enum SourceDocument {
     let multiPatterns: [(String, String, [String])] = [
       (
         "note",
-        #"(?m)^[ \t]*note[ \t]+(left|right|over)(?:[ \t]+of)?(?:[ \t]+([^\r\n]*))?\r?\n([\s\S]*?)^[ \t]*end note[ \t]*\r?$"#,
-        ["position", "target", "label"]
+        #"(?m)^[ \t]*note[ \t]+(left|right|over)(?:[ \t]+of)?(?:[ \t]+([^\r\n#]*?))?(?:[ \t]+(#[\w]+))?[ \t]*\r?\n([\s\S]*?)^[ \t]*end note[ \t]*\r?$"#,
+        ["position", "target", "color", "label"]
       ),
       ("title", #"(?m)^[ \t]*title[ \t]*\r?\n([\s\S]*?)^[ \t]*end title[ \t]*\r?$"#, ["label"]),
     ]
@@ -323,8 +341,8 @@ public enum SourceDocument {
   public static func changeField(
     _ key: String, of element: Element, to value: String, in document: ParsedDocument
   ) throws -> String {
-    guard document.canEdit, let range = element.fields[key], !value.contains("\n"),
-      !value.contains("\r")
+    try ConstructorOperations.validate(element, in: document)
+    guard document.canEdit, let range = element.fields[key], !hasLineBreak(value)
     else { throw SourceError.invalidEdit }
     if key == "alias" { throw SourceError.unsafeReference }
     return try apply([TextEdit(range: range, replacement: value)], to: document.source)
@@ -357,16 +375,48 @@ extension SourceDocument {
     let delta = after.count - before.count
     var used = Set<Int>()
     var next = (old.elements.map(\.id).max() ?? 0) + 1
+    var anchors: [Int: Element] = [:]
+    for node in old.elements {
+      if NSMaxRange(node.range) <= prefix {
+        anchors[node.range.location] = node
+      } else if node.range.location >= before.count - suffix {
+        anchors[node.range.location + delta] = node
+      }
+    }
+    let oldGroups = Dictionary(grouping: old.elements, by: { $0.kind + "\u{0}" + $0.text })
+    let newGroups = Dictionary(grouping: new.elements, by: { $0.kind + "\u{0}" + $0.text })
+    var matches: [Int: Element] = [:]
+    // Reserve unchanged nodes first: inserted nodes must never steal an existing ID.
+    for node in new.elements {
+      if let anchor = anchors[node.range.location], anchor.kind == node.kind,
+        anchor.text == node.text
+      {
+        matches[node.range.location] = anchor
+        used.insert(anchor.id)
+      }
+    }
+    for node in new.elements where matches[node.range.location] == nil {
+      let key = node.kind + "\u{0}" + node.text
+      if let group = oldGroups[key], group.count == 1, newGroups[key]?.count == 1,
+        !used.contains(group[0].id)
+      {
+        matches[node.range.location] = group[0]
+        used.insert(group[0].id)
+      }
+    }
+    let changed = Dictionary(
+      grouping: old.elements.filter {
+        !used.contains($0.id) && NSMaxRange($0.range) > prefix
+          && $0.range.location < before.count - suffix
+      }, by: { $0.range.location })
     let nodes = new.elements.map { node -> Element in
-      let previous = old.elements.first { candidate in
-        guard !used.contains(candidate.id), candidate.kind == node.kind else { return false }
-        if NSMaxRange(candidate.range) <= prefix {
-          return candidate.range.location == node.range.location
+      var previous = matches[node.range.location]
+      if previous == nil, NSMaxRange(node.range) > prefix,
+        node.range.location < after.count - suffix
+      {
+        previous = changed[node.range.location]?.first {
+          !used.contains($0.id) && $0.kind == node.kind && $0.depth == node.depth
         }
-        if candidate.range.location >= before.count - suffix {
-          return candidate.range.location + delta == node.range.location
-        }
-        return candidate.range.location == node.range.location && candidate.depth == node.depth
       }
       let identity = previous?.id ?? next
       if previous == nil { next += 1 }

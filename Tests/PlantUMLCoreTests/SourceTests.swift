@@ -110,12 +110,14 @@ extension SourceTests {
     let e = try XCTUnwrap(d.elements.last { $0.kind == "message" })
     XCTAssertThrowsError(try ConstructorOperations.move(e, up: true, in: d))
   }
-  func testAliasInMultilineNoteBlocksRename() throws {
+  func testAliasInMultilineNoteRenamesTargetOnly() throws {
     let d = SourceDocument.parse(
       "@startuml\nparticipant \"User\" as U\nnote over U\nhello\nend note\nU -> U : message\n@enduml"
     )
     let e = try XCTUnwrap(d.elements.first { $0.kind == "participant" })
-    XCTAssertThrowsError(try ConstructorOperations.renameAlias(e, to: "Client", in: d))
+    let renamed = try ConstructorOperations.renameAlias(e, to: "Client", in: d)
+    XCTAssertTrue(renamed.contains("note over Client\nhello\nend note"))
+    XCTAssertTrue(renamed.contains("Client -> Client : message"))
   }
 }
 

@@ -11,8 +11,8 @@ struct DocumentView: View {
   @ObservedObject var workspace: Workspace
   @ObservedObject var document: StudioDocument
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State var layout = "All"
-  @State var vertical = false
+  var layout: String { document.panelLayout }
+  var vertical: Bool { document.verticalPanels }
   @State private var comparison: Comparison?
   @State private var historyVisible = false
   @State private var templatesVisible = false
@@ -20,17 +20,22 @@ struct DocumentView: View {
   var body: some View {
     VStack(spacing: 0) {
       HStack {
-        Picker("Панели", selection: $layout) {
+        Picker("Панели", selection: $document.panelLayout) {
           Text("Все панели").tag("All")
           Text("Код и диаграмма").tag("Split")
           Text("Код").tag("Code")
           Text("Диаграмма").tag("Diagram")
         }.frame(width: 190)
         Menu {
-          Toggle("Вертикальное разделение", isOn: $vertical)
+          Toggle("Вертикальное разделение", isOn: $document.verticalPanels)
         } label: {
           Image(systemName: "rectangle.split.2x1")
         }.fixedSize().help("Расположение панелей")
+        Button {
+          document.constructorVisible.toggle()
+        } label: {
+          Image(systemName: "sidebar.right")
+        }.help(document.constructorVisible ? "Скрыть конструктор" : "Показать конструктор")
         Menu("Сравнить") {
           Button("Текущий с сохранённым") {
             comparison = Comparison(
@@ -79,8 +84,8 @@ struct DocumentView: View {
             preview
           }
         }
-        if layout == "All" || layout == "Diagram" {
-          Constructor(document: document).frame(minWidth: 240, idealWidth: 300, maxWidth: 420)
+        if document.constructorVisible && layout != "Code" {
+          Constructor(document: document).frame(minWidth: 260, idealWidth: 320, maxWidth: 420)
         }
       }
       if !document.operationError.isEmpty {
@@ -142,8 +147,12 @@ struct DocumentView: View {
           guard document.parsed.source == document.source else { return }
           document.navigationRange = nil
           document.selectedTextRange = range.length > 0 ? range : nil
-          document.selection =
-            DocumentNavigation.element(at: range.location, in: document.parsed)?.id
+          if let element = DocumentNavigation.element(at: range.location, in: document.parsed) {
+            document.selectObject(element, navigate: false)
+          } else {
+            document.selection = nil
+            document.multiSelection = []
+          }
         }, diagnosticLine: document.errorLine,
         selectedSourceRange: document.navigationRange
       ).frame(maxWidth: .infinity, maxHeight: .infinity)

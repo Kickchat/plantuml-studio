@@ -1,20 +1,30 @@
 import Foundation
 
 public enum ConstructorOperations {
+  public static func validate(_ element: Element, in document: ParsedDocument) throws {
+    guard
+      document.elements.contains(where: {
+        $0.id == element.id && $0.range == element.range && $0.text == element.text
+          && $0.fullRange == element.fullRange
+      }), element.range.location >= 0, element.range.length >= 0,
+      NSMaxRange(element.range) <= (document.source as NSString).length
+    else { throw SourceError.staleRange }
+  }
   public static func renameAlias(_ element: Element, to alias: String, in document: ParsedDocument)
     throws -> String
   {
-    guard document.canEdit, let range = element.fields["alias"] ?? element.fields["name"],
+    try validate(element, in: document)
+    guard document.canEdit, !SourceDocument.hasLineBreak(alias),
+      let range = element.fields["alias"] ?? element.fields["name"],
       alias.range(of: #"^[\p{L}_][\p{L}\w]*$"#, options: .regularExpression) != nil
     else { throw SourceError.invalidEdit }
     let ns = document.source as NSString
     let previous = ns.substring(with: range)
-    guard previous.first != "\"" else { throw SourceError.unsafeReference }
     let token = try NSRegularExpression(
       pattern: "(?<![\\p{L}\\w])" + NSRegularExpression.escapedPattern(for: previous)
         + "(?![\\p{L}\\w])")
     // Unsupported statements may reference this alias. Refuse rather than guessing.
-    for node in document.elements where node.kind == "unsupported" || node.kind == "note" {
+    for node in document.elements where node.kind == "unsupported" {
       if token.firstMatch(
         in: node.text, range: NSRange(location: 0, length: (node.text as NSString).length)) != nil
       {
@@ -36,12 +46,24 @@ public enum ConstructorOperations {
       for key in ["from", "to", "target"] {
         if let r = node.fields[key], ns.substring(with: r) == previous {
           edits.append(TextEdit(range: r, replacement: alias))
+        } else if key == "target", node.kind == "note", let r = node.fields[key] {
+          let target = ns.substring(with: r)
+          for match in token.matches(
+            in: target, range: NSRange(location: 0, length: (target as NSString).length))
+          {
+            edits.append(
+              TextEdit(
+                range: NSRange(
+                  location: r.location + match.range.location, length: match.range.length),
+                replacement: alias))
+          }
         }
       }
     }
     return try SourceDocument.apply(edits, to: document.source)
   }
   public static func span(_ element: Element, in document: ParsedDocument) throws -> NSRange {
+    try validate(element, in: document)
     let ns = document.source as NSString
     var end = NSMaxRange(element.range)
     if element.kind == "block" || element.kind == "entity" || element.kind == "container" {
@@ -53,6 +75,7 @@ public enum ConstructorOperations {
     return NSRange(location: element.range.location, length: end - element.range.location)
   }
   public static func delete(_ element: Element, in document: ParsedDocument) throws -> String {
+    try validate(element, in: document)
     guard document.canEdit, element.kind != "unsupported", element.kind != "branch" else {
       throw SourceError.invalidEdit
     }
@@ -115,8 +138,8 @@ public enum ConstructorOperations {
 }
 
 extension ConstructorOperations {
-  public static func move(_ element: Element, up: Bool, in document: ParsedDocument) throws
-    -> String
+  private static func moveRanges(_ element: Element, up: Bool, in document: ParsedDocument) throws
+    -> (NSRange, NSRange)
   {
     guard document.canEdit, !["branch", "unsupported", "activation"].contains(element.kind) else {
       throw SourceError.invalidEdit
@@ -141,6 +164,18 @@ extension ConstructorOperations {
     guard between.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw SourceError.invalidEdit
     }
+    return (first, second)
+  }
+  public static func canMove(_ element: Element, up: Bool, in document: ParsedDocument) -> Bool {
+    (try? moveRanges(element, up: up, in: document)) != nil
+  }
+  public static func move(_ element: Element, up: Bool, in document: ParsedDocument) throws
+    -> String
+  {
+    let (first, second) = try moveRanges(element, up: up, in: document)
+    let ns = document.source as NSString
+    let between = ns.substring(
+      with: NSRange(location: NSMaxRange(first), length: second.location - NSMaxRange(first)))
     let replacement = ns.substring(with: second) + between + ns.substring(with: first)
     return try SourceDocument.apply(
       [
@@ -149,12 +184,14 @@ extension ConstructorOperations {
           replacement: replacement)
       ], to: document.source)
   }
+
 }
 
 extension ConstructorOperations {
   public static func setAttributeMandatory(
     _ element: Element, enabled: Bool, in document: ParsedDocument
   ) throws -> String {
+    try validate(element, in: document)
     guard document.canEdit, element.kind == "attribute", let name = element.fields["name"] else {
       throw SourceError.invalidEdit
     }
@@ -171,6 +208,7 @@ extension ConstructorOperations {
   public static func setAttributeKey(_ element: Element, enabled: Bool, in document: ParsedDocument)
     throws -> String
   {
+    try validate(element, in: document)
     guard document.canEdit, element.kind == "attribute" else { throw SourceError.invalidEdit }
     if let stereotype = element.fields["stereotype"] {
       let current = (document.source as NSString).substring(with: stereotype)

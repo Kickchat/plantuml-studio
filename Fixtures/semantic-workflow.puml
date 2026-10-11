@@ -1,0 +1,38 @@
+@startuml
+' This comment must survive all constructor edits.
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign left
+skinparam sequence {
+  LifeLineBorderColor #334155
+}
+autonumber
+title Проверка входных данных
+boundary "Client" as client #DDDDFF
+participant "Service" as service
+participant "Worker" as worker
+client -> service : Отправить запрос
+service -> worker : Переход в validation_state
+alt Проверка запроса
+  loop Повторная проверка
+    worker -> worker : Проверка данных
+    opt Есть результат
+      worker --> service : Результат обработки
+    end
+  end
+else request_valid = false
+  note over service,worker
+    Сохранить решение
+  end note
+  service -> worker : Обновить задачу
+else Проверка отложена
+  par Проверки
+    worker -> service : Первая проверка
+  else Параллельная ветвь
+    service --> client : Вторая проверка
+  end
+end
+opt Обработка результата
+  client -> worker : Отправка сообщения
+  worker --> client : Результат обработки
+end
+@enduml

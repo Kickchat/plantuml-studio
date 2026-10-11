@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.4.0 — Unreleased
+## 0.5.0 — Development build
+
+- Semantic Sequence/ER constructor with object names, directions, branches, attributes and relationships; separate diagram settings.
+- Contextual property forms, object search, branch insertion/deletion and explicit dependency-aware deletion.
+- Minimal source edits preserve comments, unknown statements and UTF-16/CRLF; stable identities retain selection and expanded groups.
+- Constructor/code/SVG navigation, conservative matching, last-valid-state recovery and safe stale-range checks.
+- Adjustable/hideable panels and properties, responsive Fit to Window/Width, retained zoom and native Light/Dark themes.
+- Installable Apple Silicon DMG with bundled Java/PlantUML.
+- Fictional demo scenarios with generic participants in fixtures, tests, documentation and screenshots.
+
+## 0.4.0 — Development build
 
 - Sparkle 2.10: Stable HTTPS appcast, signed feeds and EdDSA archives, built-in update UI, background checks and menu command.
 - Update installation waits for saving or explicitly discarding unsaved diagrams; cancellation postpones installation.

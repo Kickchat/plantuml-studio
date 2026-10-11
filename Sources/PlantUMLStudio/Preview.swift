@@ -27,6 +27,7 @@ struct Preview: NSViewRepresentable {
       });
       document.addEventListener('mousemove', e => { if(dragging) window.scrollTo(scrollX+startX-e.clientX,scrollY+startY-e.clientY); });
       document.addEventListener('mouseup', () => dragging=false);
+      window.addEventListener('resize', () => window.applyStudioZoom?.());
       """
     config.userContentController.addUserScript(
       WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -83,8 +84,7 @@ struct Preview: NSViewRepresentable {
       guard let payload = message.body as? [String: String], let selected = element(payload) else {
         return
       }
-      document.navigationRange = selected.range
-      document.selection = selected.id
+      document.selectObject(selected)
     }
     func element(_ payload: [String: String]) -> Element? {
       guard document.canEdit else { return nil }
@@ -113,8 +113,7 @@ struct Preview: NSViewRepresentable {
         guard let self, let web, let payload = result as? [String: String],
           let selected = self.element(payload)
         else { return }
-        self.document.navigationRange = selected.range
-        self.document.selection = selected.id
+        self.document.selectObject(selected)
         let menu = NSMenu()
         let delete = NSMenuItem(
           title: "Удалить элемент", action: #selector(self.deleteSelected), keyEquivalent: "")
@@ -127,7 +126,7 @@ struct Preview: NSViewRepresentable {
     @objc func deleteSelected() {
       guard let selected = document.parsed.elements.first(where: { $0.id == document.selection })
       else { return }
-      document.edit { try ConstructorOperations.delete(selected, in: document.parsed) }
+      document.requestDelete(selected)
     }
     func applyTheme(_ web: WKWebView) {
       dark = web.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -145,7 +144,7 @@ struct Preview: NSViewRepresentable {
           ? "(innerWidth-48)/s.viewBox.baseVal.width"
           : "Math.min((innerWidth-48)/s.viewBox.baseVal.width,(innerHeight-48)/s.viewBox.baseVal.height)"
       web.evaluateJavaScript(
-        "(() => { const s=document.querySelector('svg'); if(s) s.style.zoom=\(expression); })()",
+        "(() => { window.applyStudioZoom=() => { const s=document.querySelector('svg'); if(s && s.viewBox.baseVal.width > 0) s.style.zoom=Math.max(0.05, \(expression)); }; window.applyStudioZoom(); })()",
         completionHandler: nil)
     }
     func highlightSelection(_ web: WKWebView, scroll: Bool) {

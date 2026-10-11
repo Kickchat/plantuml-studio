@@ -4,6 +4,10 @@ public struct OutlineNode: Identifiable, Sendable {
   public let element: Element
   public let children: [OutlineNode]
   public var id: Int { element.id }
+  public init(element: Element, children: [OutlineNode]) {
+    self.element = element
+    self.children = children
+  }
 }
 public enum DocumentNavigation {
   public static func outline(_ document: ParsedDocument) -> [OutlineNode] {
@@ -84,7 +88,7 @@ public enum QuickOperations {
     guard document.canEdit,
       document.elements.contains(where: {
         $0.id == element.id && $0.range == element.range && $0.text == element.text
-      }), element.kind == "message", !text.contains("\n"), !text.contains("\r")
+      }), element.kind == "message", !SourceDocument.hasLineBreak(text)
     else { throw SourceError.invalidEdit }
     let range = try ConstructorOperations.span(element, in: document)
     let indent = String(element.text.prefix { $0 == " " || $0 == "\t" })
@@ -190,7 +194,7 @@ public enum QuickOperations {
     else { throw SourceError.invalidEdit }
     let edits = document.elements.filter {
       $0.range.location >= range.location && NSMaxRange($0.range) <= NSMaxRange(range)
-        && $0.kind != "unsupported" && !$0.text.contains("\n")
+        && $0.kind != "unsupported" && !SourceDocument.hasLineBreak($0.text)
     }.map { node in
       let prefix = String(node.text.prefix { $0 == " " || $0 == "\t" })
       return TextEdit(

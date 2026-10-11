@@ -4,7 +4,7 @@ Source repository: https://github.com/Kickchat/plantuml-studio. `main` is the de
 
 ## Current status
 
-0.4.0 is a development build, not a published stable release. There are no Apple or Sparkle credentials configured delivery settings configured in the repository. Production update delivery remains disabled until the repository is public and a valid public key is embedded. No Developer ID/notarization or installed-app upgrade has been claimed as tested.
+0.5.0 is a development build, not a published stable release. Apple and Sparkle signing credentials still need to be configured for production delivery. Production update delivery remains disabled until the repository is public and a valid public key is embedded. No Developer ID/notarization or installed-app upgrade has been claimed as tested.
 
 The owner will make the repository public after the source push. Updates are delivered directly by public GitHub Releases, without a separate hosting account or an application GitHub token. The stable feed is `https://github.com/Kickchat/plantuml-studio/releases/latest/download/appcast.xml`; archives use immutable version-tag URLs. The app bundle identifier and existing preference/session/history paths remain unchanged.
 
@@ -34,9 +34,9 @@ Enable GitHub Actions. The runner label is `macos-15` (arm64). Do not switch to 
 ## Next release
 
 1. Finish and review changes, update CHANGELOG.md, run `python3 -m unittest discover -s scripts/tests -v`, `./scripts/test.sh`, `./scripts/build.sh`, and `./scripts/smoke.sh` in a macOS graphical session. Resolve packages first on a clean checkout.
-2. For a later version run `python3 scripts/version.py bump --version 0.4.1 --build 5`. Both semantic version and integer build must increase. For the first updater release the prepared version is 0.4.0/build 4. Do not publish the earlier local ad-hoc 0.3.1 build as an updater release.
+2. For a later version run `python3 scripts/version.py bump --version 0.5.1 --build 6`. Both semantic version and integer build must increase. For the first updater release the prepared version is 0.5.0/build 5. Do not publish the earlier local ad-hoc 0.3.1 build as an updater release.
 3. Commit, open/review a PR and obtain approval before merging into main. Pull-request CI runs release-script tests, Swift tests, and builds/verifies an ad-hoc app without uploading release artifacts or accessing signing secrets.
-4. From the approved main commit create an annotated tag: `git tag -a v0.4.0 -m 'PlantUML Studio 0.4.0'`, then `git push origin v0.4.0` (replace version for later releases).
+4. From the approved main commit create an annotated tag: `git tag -a v0.5.0 -m 'PlantUML Studio 0.5.0'`, then `git push origin v0.5.0` (replace version for later releases).
 5. `Signed stable release` rejects a mismatched version, tag outside approved main history, missing credentials, or an existing GitHub Release for that version. It tests, imports a temporary signing keychain, builds, signs native code from inside out, runs GUI smoke, submits to Apple, requires Accepted, staples/assesses the app, then creates the final ZIP.
 6. Sparkle generates and signs the appcast and embedded notes using the private seed. Validation checks version/build, exact public download URL, ZIP length and EdDSA signature; the signed feed is independently verified. A draft GitHub Release receives artifacts and generated Git-history notes.
 7. All draft assets are downloaded with workflow authentication and compared by SHA-256 before publication. The complete release is then made non-draft and marked Latest. Anonymous downloads of every tagged asset and the latest signed feed are verified. No debug/ad-hoc artifact is delivered to Stable.
@@ -61,6 +61,6 @@ Before relaunch Sparkle's installation handler is postponed. The existing save/c
 
 ## Required acceptance test
 
-Once owner credentials exist and the repository is public, install a Developer ID signed, notarized 0.4.0 in `/Applications` and release a similarly signed 0.4.1/build 5. Verify standard notification, notes, postpone/skip, installation/relaunch, unchanged theme/session/history, and no repeated offer of the installed version. Exercise offline checks, interrupted download, corrupted ZIP, wrong EdDSA signature, and dirty-diagram save/cancel. Use an isolated HTTPS test feed and test keys for destructive fixtures; never alter Stable archives. Existing pre-Sparkle installations require a one-time manual installation of the first Sparkle-enabled release.
+Once owner credentials exist and the repository is public, install a Developer ID signed, notarized 0.5.0 in `/Applications` and release a similarly signed 0.5.1/build 6. Verify standard notification, notes, postpone/skip, installation/relaunch, unchanged theme/session/history, and no repeated offer of the installed version. Exercise offline checks, interrupted download, corrupted ZIP, wrong EdDSA signature, and dirty-diagram save/cancel. Use an isolated HTTPS test feed and test keys for destructive fixtures; never alter Stable archives. Existing pre-Sparkle installations require a one-time manual installation of the first Sparkle-enabled release.
 
 Official references: [Sparkle setup](https://sparkle-project.org/documentation/), [programmatic API](https://sparkle-project.org/documentation/programmatic-setup/), [publishing](https://sparkle-project.org/documentation/publishing/), [GitHub macOS runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).

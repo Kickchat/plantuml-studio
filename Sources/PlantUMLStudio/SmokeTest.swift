@@ -16,7 +16,9 @@ import SwiftUI
         try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
       }
       let updater = UpdateController()
-      guard updater.responds(to: NSSelectorFromString("updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:")),
+      guard
+        updater.responds(
+          to: NSSelectorFromString("updater:shouldPostponeRelaunchForUpdate:untilInvokingBlock:")),
         updater.responds(to: NSSelectorFromString("allowedChannelsForUpdater:"))
       else { throw failure("Sparkle security delegates are not connected") }
       workspace.new(.sequence)
@@ -164,8 +166,9 @@ import SwiftUI
         forName: "PlantUMLStudio.AppearanceSmoke")
       component.undoManager.undo()
       try await wait { component.source == before && component.canEdit }
+      try await SemanticSmoke.run(directory: directory)
       try Data(
-        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\",\"fold-layout\",\"history\",\"component\",\"structural-diff\",\"diff-window\",\"themes\",\"theme-state-preservation\",\"multiwindow-appearance\",\"webkit-theme\"]}"
+        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\",\"fold-layout\",\"history\",\"component\",\"structural-diff\",\"diff-window\",\"themes\",\"theme-state-preservation\",\"multiwindow-appearance\",\"webkit-theme\",\"semantic-tree\",\"semantic-selection\",\"stale-constructor\",\"semantic-navigation\",\"implicit-participants\",\"fit-resize\"]}"
           .utf8
       ).write(to: directory.appendingPathComponent("result.json"))
       exit(0)
