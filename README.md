@@ -8,7 +8,7 @@
 
 Откройте `dist/PlantUML Studio.app`. Java и PlantUML находятся внутри приложения, сеть не нужна. Сборка для Apple Silicon; macOS 14+.
 
-[GitHub Releases](https://github.com/Kickchat/plantuml-studio/releases) — установочные ZIP и канал автоматических обновлений. Владелец откроет репозиторий после пуша; стабильная 0.4.0 пока не опубликована. После первого подписанного релиза распакуйте ZIP и перенесите приложение в `/Applications`. Следующие версии устанавливаются через «PlantUML Studio → Проверить обновления».
+[GitHub Releases](https://github.com/Kickchat/plantuml-studio/releases) — установочные ZIP и канал автоматических обновлений. Следующие версии устанавливаются через «PlantUML Studio → Проверить обновления».
 
 
 ## Сборка
