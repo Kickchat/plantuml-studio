@@ -7,9 +7,12 @@ import SwiftUI
 import WebKit
 
 struct DocumentView: View {
+  @ObservedObject var workspace: Workspace
   @ObservedObject var document: StudioDocument
   @State var layout = "All"
   @State var vertical = false
+  @State private var comparison: Comparison?
+  @State private var historyVisible = false
   @State private var templatesVisible = false
   var zoom: Double { document.zoom }
   var body: some View {
@@ -22,12 +25,29 @@ struct DocumentView: View {
           Text("Диаграмма").tag("Diagram")
         }.frame(width: 220)
         Toggle("Вертикально", isOn: $vertical).toggleStyle(.button)
+        Menu("Сравнить") {
+          Button("Текущий с сохранённым") {
+            comparison = Comparison(
+              left: document.savedText, right: document.source, leftName: "Последнее сохранение",
+              rightName: document.name)
+          }
+          Button("Два файла…") { compareFiles() }
+          ForEach(workspace.documents.filter { $0.id != document.id }) { other in
+            Button("С документом " + other.name) {
+              comparison = Comparison(
+                left: other.source, right: document.source, leftName: other.name,
+                rightName: document.name)
+            }
+          }
+        }
+        Button("История") { historyVisible = true }
         Button("Шаблоны") { templatesVisible = true }
         Spacer()
         Picker("Режим", selection: $document.modeOverride) {
           Text("Авто").tag(Optional<DiagramKind>.none)
           Text("Sequence").tag(Optional(DiagramKind.sequence))
           Text("ER").tag(Optional(DiagramKind.er))
+          Text("Component").tag(Optional(DiagramKind.component))
           Text("Только текст").tag(Optional(DiagramKind.unknown))
         }.frame(width: 150)
         Button {
@@ -91,8 +111,21 @@ struct DocumentView: View {
             ? "Конструктор синхронизирован"
             : "Последнее корректное состояние · конструктор недоступен")
       }.font(.caption).foregroundStyle(.secondary).padding(8)
-    }.sheet(isPresented: $document.paletteVisible) { CommandPalette(document: document) }
+    }.sheet(item: $comparison) { DiffView(comparison: $0) }
+      .sheet(isPresented: $historyVisible) { HistoryView(document: document) }
+      .sheet(isPresented: $document.paletteVisible) { CommandPalette(document: document) }
       .sheet(isPresented: $templatesVisible) { TemplatesView(document: document) }
+  }
+  func compareFiles() {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = true
+    guard panel.runModal() == .OK, panel.urls.count == 2 else { return }
+    do {
+      comparison = Comparison(
+        left: try String(contentsOf: panel.urls[0], encoding: .utf8),
+        right: try String(contentsOf: panel.urls[1], encoding: .utf8),
+        leftName: panel.urls[0].lastPathComponent, rightName: panel.urls[1].lastPathComponent)
+    } catch { document.operationError = error.localizedDescription }
   }
   var editor: some View {
     CodeEditor(
@@ -101,6 +134,7 @@ struct DocumentView: View {
       onCursor: { range in
         guard document.parsed.source == document.source else { return }
         document.navigationRange = nil
+        document.selectedTextRange = range.length > 0 ? range : nil
         document.selection = DocumentNavigation.element(at: range.location, in: document.parsed)?.id
       }, diagnosticLine: document.errorLine,
       selectedSourceRange: document.navigationRange

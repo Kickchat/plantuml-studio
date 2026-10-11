@@ -8,11 +8,12 @@ let package = Package(
     .target(name: "PlantUMLCore"), .target(name: "Rendering"),
     .target(name: "SequenceModule", dependencies: ["PlantUMLCore"]),
     .target(name: "ERModule", dependencies: ["PlantUMLCore"]),
+    .target(name: "ComponentModule", dependencies: ["PlantUMLCore"]),
     .executableTarget(
       name: "PlantUMLStudio",
-      dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule"]),
+      dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule", "ComponentModule"]),
     .executableTarget(name: "StudioBenchmark", dependencies: ["PlantUMLCore", "Rendering"]),
     .testTarget(
       name: "PlantUMLCoreTests",
-      dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule"]),
+      dependencies: ["PlantUMLCore", "Rendering", "SequenceModule", "ERModule", "ComponentModule"]),
   ])

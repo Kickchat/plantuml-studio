@@ -1,7 +1,9 @@
 import AppKit
+import ComponentModule
 import Foundation
 import PlantUMLCore
 import Rendering
+import SwiftUI
 
 /// Exercises the real application process without accessibility permissions or
 /// changing the user's saved session. Enabled only by scripts/smoke.sh.
@@ -94,8 +96,47 @@ import Rendering
           try png.write(to: directory.appendingPathComponent("window.png"))
         }
       }
+      guard try document.history.versions(for: document.url!.standardizedFileURL.path).count > 0
+      else { throw failure("Saved history missing") }
+      workspace.new(.component)
+      guard let component = workspace.current else { throw failure("Component document missing") }
+      try await wait { component.canEdit }
+      guard ComponentModel(component.parsed).nodes.count == 2,
+        let relation = component.parsed.elements.first(where: { $0.kind == "componentRelation" })
+      else { throw failure("Component model failed") }
+      let before = component.source
+      component.edit {
+        try SourceDocument.changeField(
+          "label", of: relation, to: "Smoke component edit", in: component.parsed)
+      }
+      try await wait { component.source != before && component.canEdit }
+      guard
+        ComponentContract().compare(before, component.source).changes.contains(where: {
+          $0.status == .modified
+        })
+      else { throw failure("Component structural diff failed") }
+      let diffWindow = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1150, height: 800), styleMask: [.titled, .closable],
+        backing: .buffered, defer: false)
+      diffWindow.contentView = NSHostingView(
+        rootView: DiffView(
+          comparison: Comparison(
+            left: before, right: component.source, leftName: "Before", rightName: "After")))
+      diffWindow.makeKeyAndOrderFront(nil)
+      try await Task.sleep(for: .seconds(2))
+      if let content = diffWindow.contentView,
+        let bitmap = content.bitmapImageRepForCachingDisplay(in: content.bounds)
+      {
+        content.cacheDisplay(in: content.bounds, to: bitmap)
+        if let png = bitmap.representation(using: .png, properties: [:]) {
+          try png.write(to: directory.appendingPathComponent("diff-window.png"))
+        }
+      }
+      diffWindow.orderOut(nil)
+      component.undoManager.undo()
+      try await wait { component.source == before && component.canEdit }
       try Data(
-        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\"]}"
+        "{\"passed\":true,\"checks\":[\"window\",\"sequence\",\"constructor\",\"undo\",\"redo\",\"save\",\"er\",\"svg\",\"png\",\"outline\",\"palette\",\"search-panel\",\"template-undo\",\"fold-layout\",\"history\",\"component\",\"structural-diff\",\"diff-window\"]}"
           .utf8
       ).write(to: directory.appendingPathComponent("result.json"))
       exit(0)

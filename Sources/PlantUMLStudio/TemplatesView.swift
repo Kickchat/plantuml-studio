@@ -1,3 +1,4 @@
+import ComponentModule
 import PlantUMLCore
 import SwiftUI
 
@@ -32,7 +33,8 @@ struct TemplatesView: View {
         Button("Закрыть") { dismiss() }
       }
       List {
-        ForEach(TemplateLibrary.builtins + library.items) { template in
+        ForEach(TemplateLibrary.builtins + ComponentTemplates.builtins + library.items) {
+          template in
           if template.kind == document.parsed.kind.rawValue {
             HStack {
               VStack(alignment: .leading) {
@@ -64,12 +66,18 @@ struct TemplatesView: View {
         TextField("Название", text: $name)
         TextField("Категория", text: $category)
         Button("Из выделения") {
-          if let range = document.navigationRange ?? document.parsed.elements.first(where: {
-            $0.id == document.selection
-          })?.fullRange
+          if let range = document.selectedTextRange ?? document.navigationRange ?? document.parsed
+            .elements.first(where: {
+              $0.id == document.selection
+            })?.fullRange
             ?? document.parsed.elements.first(where: { $0.id == document.selection })?.range
           {
-            fragment = (document.source as NSString).substring(with: range)
+            if range.location >= 0, range.length >= 0,
+              range.location <= (document.source as NSString).length,
+              range.length <= (document.source as NSString).length - range.location
+            {
+              fragment = (document.source as NSString).substring(with: range)
+            }
           }
         }
       }

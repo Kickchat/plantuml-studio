@@ -78,18 +78,24 @@ public enum TemplateLibrary {
     guard fragment.canEdit else { throw SourceError.invalidEdit }
     let source = document.source as NSString
     var used = Set(
-      document.elements.filter { ["participant", "entity"].contains($0.kind) }.compactMap {
+      document.elements.filter {
+        ["participant", "entity", "component", "interface", "container"].contains($0.kind)
+      }.compactMap {
         ($0.fields["alias"] ?? $0.fields["name"]).map { source.substring(with: $0) }
       })
     // Reserve the entire template namespace before renaming any declaration.
     let original = fragment.source as NSString
-    let declarations = fragment.elements.filter { ["participant", "entity"].contains($0.kind) }
+    let declarations = fragment.elements.filter {
+      ["participant", "entity", "component", "interface", "container"].contains($0.kind)
+    }
     let names = declarations.compactMap {
       ($0.fields["alias"] ?? $0.fields["name"]).map { original.substring(with: $0) }
     }
     used.formUnion(names)
     let existing = Set(
-      document.elements.filter { ["participant", "entity"].contains($0.kind) }.compactMap {
+      document.elements.filter {
+        ["participant", "entity", "component", "interface", "container"].contains($0.kind)
+      }.compactMap {
         ($0.fields["alias"] ?? $0.fields["name"]).map { source.substring(with: $0) }
       })
     for name in names where existing.contains(name) {
@@ -101,7 +107,8 @@ public enum TemplateLibrary {
       guard
         let element = fragment.elements.first(where: { node in
           guard let range = node.fields["alias"] ?? node.fields["name"] else { return false }
-          return ["participant", "entity"].contains(node.kind) && ns.substring(with: range) == name
+          return ["participant", "entity", "component", "interface", "container"].contains(
+            node.kind) && ns.substring(with: range) == name
         })
       else { throw SourceError.invalidEdit }
       fragment = SourceDocument.parse(

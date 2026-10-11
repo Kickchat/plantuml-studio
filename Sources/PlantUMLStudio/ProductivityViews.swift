@@ -101,6 +101,7 @@ struct SearchBar: View {
       }
       if !failure.isEmpty { Text(failure).foregroundStyle(.red).font(.caption) }
     }.textFieldStyle(.roundedBorder).padding(8)
+      .onChange(of: document.source) { index = -1 }
       .onChange(of: query) { index = -1 }
       .onChange(of: regex) { index = -1 }
       .onChange(of: caseSensitive) { index = -1 }

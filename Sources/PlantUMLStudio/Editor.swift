@@ -114,7 +114,7 @@ struct CodeEditor: NSViewRepresentable {
       layout.removeTemporaryAttribute(
         .underlineStyle, forCharacterRange: NSRange(location: 0, length: ns.length))
       let caret = editor.selectedRange().location
-      for element in model.elements where ["block", "entity"].contains(element.kind) {
+      for element in model.elements where ["block", "entity", "container"].contains(element.kind) {
         guard let extent = element.fullRange else { continue }
         var last = NSMaxRange(extent) - 1
         while last > extent.location,
@@ -146,7 +146,7 @@ struct CodeEditor: NSViewRepresentable {
       storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: range)
       for (pattern, color) in [
         (
-          #"\b(actor|participant|boundary|control|entity|database|collections|queue|alt|else|opt|loop|par|break|critical|group|end|activate|deactivate|destroy|note|title|autonumber)\b"#,
+          #"\b(actor|participant|boundary|control|component|interface|package|node|cloud|frame|folder|entity|database|collections|queue|alt|else|opt|loop|par|break|critical|group|end|activate|deactivate|destroy|note|title|autonumber)\b"#,
           NSColor.systemPurple
         ), (#"(?m)^\s*'.*$"#, NSColor.secondaryLabelColor),
         (#"@startuml|@enduml|--?>+|<--?"#, NSColor.systemBlue),
@@ -203,7 +203,13 @@ struct CodeEditor: NSViewRepresentable {
     let line = source.substring(
       with: NSRange(location: lineRange.location, length: selection.location - lineRange.location))
     let newline = string.contains("\r\n") ? "\r\n" : "\n"
-    let insertion = EditorAssistance.newline(after: line, newline: newline)
+    var insertion = EditorAssistance.newline(after: line, newline: newline)
+    let paired = SourceDocument.parse(string).elements.contains {
+      $0.range.location == lineRange.location && $0.fullRange != nil
+    }
+    if paired && insertion.components(separatedBy: newline).count == 3 {
+      insertion = newline + String(line.prefix { $0 == " " || $0 == "\t" }) + "  "
+    }
     insertText(insertion, replacementRange: selection)
     let parts = insertion.components(separatedBy: newline)
     if parts.count == 3 {

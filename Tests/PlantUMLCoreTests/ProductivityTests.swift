@@ -105,3 +105,12 @@ extension ProductivityTests {
       (source as NSString).substring(with: range), "  A -> B : Request\r\n  B --> A : Response\r\n")
   }
 }
+
+extension ProductivityTests {
+  func testSyntaxHintsCoverRecognizedModel() {
+    let doc = SourceDocument.parse(source)
+    for node in doc.elements { XCTAssertFalse(SyntaxHints.hint(for: node, in: doc).isEmpty) }
+    XCTAssertTrue(
+      SyntaxHints.hint(for: doc.elements.first { $0.kind == "message" }!, in: doc).contains("->>"))
+  }
+}

@@ -1,4 +1,5 @@
 import AppKit
+import ComponentModule
 import ERModule
 import PlantUMLCore
 import Rendering
@@ -8,6 +9,7 @@ import WebKit
 
 let sequenceTemplate =
   "@startuml\ntitle Authentication\nactor User\nparticipant API\nUser -> API : Sign in\nactivate API\nalt Success\n  API --> User : Welcome\nelse Invalid credentials\n  API --> User : Try again\nend\ndeactivate API\n@enduml\n"
+let componentTemplate = "@startuml\n" + ComponentTemplates.builtins[0].fragment + "\n@enduml\n"
 let erTemplate =
   "@startuml\n!pragma layout smetana\nentity \"User\" as User {\n  * id : integer <<PK>>\n  --\n  name : text\n}\nentity \"Session\" as Session {\n  * id : integer <<PK>>\n  --\n  user_id : integer <<FK>>\n}\nUser ||--o{ Session : owns\n@enduml\n"
 
@@ -28,6 +30,7 @@ let erTemplate =
             Menu {
               Button("Sequence") { workspace.new(.sequence) }
               Button("ER Diagram") { workspace.new(.er) }
+              Button("Component Diagram") { workspace.new(.component) }
             } label: {
               Image(systemName: "plus")
             }
@@ -35,12 +38,20 @@ let erTemplate =
         }
         Divider()
         if let document = workspace.current {
-          DocumentView(document: document).id(document.id)
+          DocumentView(workspace: workspace, document: document).id(document.id)
         } else {
           ContentUnavailableView("Откройте диаграмму", systemImage: "doc.text")
         }
       }.frame(minWidth: 1000, minHeight: 650).background(Color(nsColor: .windowBackgroundColor))
         .background(WindowConnection(delegate: delegate, workspace: workspace)).onReceive(
+          NotificationCenter.default.publisher(for: .studioOpenHistory)
+        ) { note in
+          if let source = note.object as? String {
+            let doc = StudioDocument(source: source)
+            workspace.documents.append(doc)
+            workspace.selected = doc.id
+          }
+        }.onReceive(
           NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
         ) { _ in workspace.persist() }
     }.commands {
@@ -57,6 +68,7 @@ let erTemplate =
         Button("Новая Sequence") { workspace.new(.sequence) }.keyboardShortcut("n")
         Button("Новая ER") { workspace.new(.er) }.keyboardShortcut(
           "n", modifiers: [.command, .shift])
+        Button("Новая Component") { workspace.new(.component) }
         Button("Открыть…") { workspace.open() }.keyboardShortcut("o")
       }
       CommandGroup(replacing: .undoRedo) {

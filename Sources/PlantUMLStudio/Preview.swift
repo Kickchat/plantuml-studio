@@ -9,6 +9,7 @@ import WebKit
 struct Preview: NSViewRepresentable {
   @ObservedObject var document: StudioDocument
   let zoom: Double
+  var editable = true
   func makeNSView(context: Context) -> WKWebView {
     let config = WKWebViewConfiguration()
     config.userContentController.add(context.coordinator, name: "selectElement")
@@ -34,6 +35,7 @@ struct Preview: NSViewRepresentable {
   }
   func updateNSView(_ web: WKWebView, context: Context) {
     context.coordinator.document = document
+    context.coordinator.editable = editable
     context.coordinator.zoom = zoom
     if document.focusRequest == "diagram" {
       web.window?.makeFirstResponder(web)
@@ -63,6 +65,7 @@ struct Preview: NSViewRepresentable {
     var last = "", zoom = 1.0
     var scrollOffset = [0.0, 0.0]
     var returnRequest = 0
+    var editable = true
     var document: StudioDocument
     init(_ document: StudioDocument) { self.document = document }
     func userContentController(
@@ -91,6 +94,7 @@ struct Preview: NSViewRepresentable {
       return matches.count == 1 ? matches[0] : nil
     }
     func contextMenu(_ web: WKWebView, event: NSEvent) {
+      guard editable else { return }
       let point = web.convert(event.locationInWindow, from: nil)
       let y = web.isFlipped ? point.y : web.bounds.height - point.y
       let script = """
@@ -133,7 +137,7 @@ struct Preview: NSViewRepresentable {
       var label = ""
       if let element = document.parsed.elements.first(where: { $0.id == document.selection }) {
         let ns = document.source as NSString
-        if ["entity", "participant"].contains(element.kind),
+        if ["entity", "participant", "component", "interface", "container"].contains(element.kind),
           let range = element.fields["alias"] ?? element.fields["name"]
         {
           identifier = ns.substring(with: range).trimmingCharacters(

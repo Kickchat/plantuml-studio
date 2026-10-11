@@ -14,6 +14,7 @@ cp -R Runtime "$APP/Contents/Resources/"
 cp scripts/Info.plist "$APP/Contents/Info.plist"
 TASK_LOGO="Assets/AppLogo.png"
 if [ ! -f "$TASK_LOGO" ]; then TASK_LOGO="Assets/PlantUML App Icon.png"; fi
+if [ ! -f "$TASK_LOGO" ]; then TASK_LOGO="Assets/image.png"; fi
 if [ -f "$TASK_LOGO" ]; then
     ./scripts/build-icon.sh "$TASK_LOGO" "$APP/Contents/Resources/AppIcon.icns"
     /usr/libexec/PlistBuddy -c 'Add :CFBundleIconFile string AppIcon' "$APP/Contents/Info.plist"

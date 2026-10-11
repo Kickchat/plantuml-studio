@@ -1,4 +1,5 @@
 import AppKit
+import ComponentModule
 import ERModule
 import PlantUMLCore
 import Rendering
@@ -41,6 +42,17 @@ struct Constructor: View {
           Button("Разделитель") { add("== Section ==") }
           Button("Задержка") { add("... waiting ...") }
           Button("Автонумерация") { add("autonumber") }
+        } else if document.parsed.kind == .component {
+          ForEach(ComponentType.allCases.map(\.rawValue), id: \.self) { type in
+            Button(type) {
+              add(
+                "\(type) \"Element\" as \(uniqueIdentifier(prefix:"C"))"
+                  + (["package", "node", "cloud", "frame", "folder"].contains(type) ? " {\n}" : ""))
+            }
+          }
+          Button("Связь") {
+            add("\(identifiers.first ?? "A") --> \(identifiers.last ?? "B") : uses")
+          }
         } else if document.parsed.kind == .er {
           Button("Сущность") {
             add(
@@ -78,6 +90,38 @@ struct Constructor: View {
       }
       if let selected {
         Text(selected.kind.capitalized).font(.headline)
+        Text(SyntaxHints.hint(for: selected, in: document.parsed)).font(.caption).foregroundStyle(
+          .secondary
+        ).textSelection(.enabled)
+        if document.parsed.kind == .component
+          && ["component", "interface", "container"].contains(selected.kind)
+        {
+          Menu("Переместить в контейнер") {
+            Button("Корень") {
+              document.edit {
+                try ComponentOperations.move(selected, into: nil, in: document.parsed)
+              }
+            }
+            ForEach(
+              document.parsed.elements.filter { $0.kind == "container" && $0.id != selected.id }
+            ) { container in
+              Button(container.text) {
+                document.edit {
+                  try ComponentOperations.move(selected, into: container, in: document.parsed)
+                }
+              }
+            }
+          }
+          if selected.kind == "container" {
+            Button("Добавить компонент внутрь") {
+              document.edit {
+                try ConstructorOperations.insertInside(
+                  "component \(uniqueIdentifier(prefix:"C"))", element: selected,
+                  document: document.parsed)
+              }
+            }
+          }
+        }
         if selected.kind == "entity" {
           Button("Добавить несколько атрибутов…") { attributesVisible = true }
             .sheet(isPresented: $attributesVisible) {
@@ -146,7 +190,8 @@ struct Constructor: View {
                   edits.append(TextEdit(range: range, replacement: value))
                 }
                 if selected.fields["alias"] == nil,
-                  ["participant", "entity"].contains(selected.kind), let name = fieldValues["name"]
+                  ["participant", "entity", "component", "interface", "container"].contains(
+                    selected.kind), let name = fieldValues["name"]
                 {
                   guard fieldValues.count == 1 else { throw SourceError.invalidEdit }
                   return try ConstructorOperations.renameAlias(
@@ -190,7 +235,9 @@ struct Constructor: View {
                 }
               }
             }
-            if ["participant", "entity"].contains(selected.kind), selected.fields["color"] == nil {
+            if ["participant", "entity", "component", "interface", "container"].contains(
+              selected.kind), selected.fields["color"] == nil
+            {
               Button("Добавить цвет") {
                 document.edit {
                   let location =
@@ -306,9 +353,15 @@ struct Constructor: View {
     case "arrow": return SequenceArrow.allCases.map(\.rawValue)
     case "left": return Cardinality.allCases.map(\.leftSymbol)
     case "right": return Cardinality.allCases.map(\.rightSymbol)
-    case "line": return RelationshipLine.allCases.map(\.rawValue)
+    case "line":
+      return document.parsed.kind == .component
+        ? ["-->", "..>", "--", "..", "<--", "<..", "*--", "o--"]
+        : RelationshipLine.allCases.map(\.rawValue)
     case "position": return ["left", "right", "over"]
     case "type":
+      if ["component", "interface", "container"].contains(element.kind) {
+        return ComponentType.allCases.map(\.rawValue)
+      }
       if element.kind == "participant" { return ParticipantType.allCases.map(\.rawValue) }
       if element.kind == "activation" { return ["activate", "deactivate", "destroy"] }
       return []
@@ -322,11 +375,13 @@ struct Constructor: View {
   }
   var identifiers: [String] {
     let ns = document.source as NSString
-    return document.parsed.elements.filter { ["participant", "entity"].contains($0.kind) }
-      .compactMap { element in
-        guard let range = element.fields["alias"] ?? element.fields["name"] else { return nil }
-        return ns.substring(with: range)
-      }
+    return document.parsed.elements.filter {
+      ["participant", "entity", "component", "interface", "container"].contains($0.kind)
+    }
+    .compactMap { element in
+      guard let range = element.fields["alias"] ?? element.fields["name"] else { return nil }
+      return ns.substring(with: range)
+    }
   }
   var messageTemplate: String {
     "\(identifiers.first ?? "A") -> \(identifiers.last ?? "B") : Message"

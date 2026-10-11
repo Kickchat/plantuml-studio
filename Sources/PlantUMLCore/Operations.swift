@@ -22,7 +22,9 @@ public enum ConstructorOperations {
       }
     }
     for node in document.elements
-    where node.id != element.id && ["entity", "participant"].contains(node.kind) {
+    where node.id != element.id
+      && ["entity", "participant", "component", "interface", "container"].contains(node.kind)
+    {
       for key in ["name", "alias"] {
         if let r = node.fields[key], ns.substring(with: r) == alias {
           throw SourceError.invalidEdit
@@ -42,7 +44,7 @@ public enum ConstructorOperations {
   public static func span(_ element: Element, in document: ParsedDocument) throws -> NSRange {
     let ns = document.source as NSString
     var end = NSMaxRange(element.range)
-    if element.kind == "block" || element.kind == "entity" {
+    if element.kind == "block" || element.kind == "entity" || element.kind == "container" {
       guard let fullRange = element.fullRange else { throw SourceError.invalidEdit }
       return fullRange
     }
@@ -54,7 +56,15 @@ public enum ConstructorOperations {
     guard document.canEdit, element.kind != "unsupported", element.kind != "branch" else {
       throw SourceError.invalidEdit
     }
-    if ["participant", "entity"].contains(element.kind) {
+    if element.kind == "container", let extent = element.fullRange {
+      for child in document.elements
+      where child.id != element.id && NSLocationInRange(child.range.location, extent)
+        && ["component", "interface", "container"].contains(child.kind)
+      {
+        _ = try delete(child, in: document)
+      }
+    }
+    if ["participant", "entity", "component", "interface", "container"].contains(element.kind) {
       let ns = document.source as NSString
       let identifier = element.fields["alias"] ?? element.fields["name"]
       guard let identifier else { throw SourceError.invalidEdit }
@@ -82,7 +92,7 @@ public enum ConstructorOperations {
   public static func insertInside(_ text: String, element: Element, document: ParsedDocument) throws
     -> String
   {
-    guard document.canEdit, ["block", "entity"].contains(element.kind) else {
+    guard document.canEdit, ["block", "entity", "container"].contains(element.kind) else {
       throw SourceError.invalidEdit
     }
     let ns = document.source as NSString

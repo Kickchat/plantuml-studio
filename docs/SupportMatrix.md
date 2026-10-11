@@ -30,3 +30,19 @@
 `*` в Information Engineering означает обязательный атрибут. `<<PK>>` и `<<FK>>` — визуальные стереотипы; они не создают ограничений БД.
 
 Переименование алиаса обновляет только распознанные ссылки и отклоняется при неизвестной ссылке или note, использующем это имя. Нестандартные/кавычечные идентификаторы можно редактировать в коде. Цвет может быть добавлен кнопкой и затем изменён. Stereotype, order и тип данных доступны в свойствах, когда соответствующие токены уже присутствуют; добавление отсутствующих дополнительных токенов выполняется кодом.
+
+## v0.2 / v0.3
+
+| Возможность | Реализация |
+|---|---|
+| Outline | Tree по extent блока/сущности/контейнера, раскрытие/поиск/множественный выбор |
+| Find / Replace | literal / regex, case, captures, prev/next, replace/all |
+| Productivity | Reply, до/после, дублирование message/block/entity, wrap alt/opt/loop, bulk attributes |
+| Templates | 11 Sequence/ER + 6 Component, локальные custom templates |
+| Component | component/interface/package/node/database/cloud/frame/folder, declarations/as alias/stereotype/color |
+| Component nesting | multiline containers, move into/root, guarded delete |
+| Component arrows | --> / ..> / -- / .. / <--> / o-- / *--, directions left/right/up/down subset |
+| Diff | aligned text, structural changes/ambiguity/fallback, SVG side-by-side / shared zoom |
+| History | snapshots on save, compare/open/confirmed restore, count/space retention |
+
+Полные ограничения и воспроизводимые проверки — Release-v0.2.md и Release-v0.3.md.

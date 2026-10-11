@@ -60,3 +60,17 @@ public struct SequenceModel: Sendable {
     }
   }
 }
+
+public struct SequenceContract: DiagramModuleContract {
+  public init() {}
+  public var kind: DiagramKind { .sequence }
+  public var declarationKinds: Set<String> { ["participant"] }
+  public func identityFields(of element: Element) -> [String] {
+    switch element.kind {
+    case "participant": return [element.fields["alias"] == nil ? "name" : "alias"]
+    case "message": return ["from", "to"]
+    case "block": return ["type"]
+    default: return element.fields.keys.sorted()
+    }
+  }
+}

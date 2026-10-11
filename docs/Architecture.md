@@ -35,3 +35,15 @@ PlantUML работает в SECURE profile. В предпросмотре CSP �
 ## Файлы и состояние
 
 UTF-8 `.puml`/`.plantuml`, атомарное сохранение Data. Отдельного проектного формата нет. Вкладки хранят независимые документы. При закрытии вкладки, окна или выходе запрашивается сохранение изменённых документов. Исходники и пути вкладок восстанавливаются через UserDefaults. Это восстановление сеанса при штатном завершении, а не журнал восстановления после сбоя.
+
+## Расширения v0.2 / v0.3
+
+SequenceModule, ERModule и ComponentModule реализуют DiagramModuleContract: распознавание, ranged parse, поля идентичности/свойств, валидация, rename и diff. Typed models остаются разными; общий Core не стирает arrow/cardinality/container semantics. ComponentSyntax — отдельная grammar в Core, чтобы не создавать цикл Core ↔ Module.
+
+Навигация строит дерево из fullRange; курсор выбирает только единственный содержащий его source range. Переход из Outline/Preview задаёт navigationRange отдельно от cursor selection и потому не перехватывает обычное выделение в редакторе. Fold меняет только layout/glyph visibility, не source; при вводе разворачивается. Поиск/замена — UTF-16 regex edits с отдельным literal replacement. Шаблоны сохраняются локально и вставляются через проверку конфликтов и официальный renderer.
+
+Отмена refresh сигнализирует RenderCancellation; ожидание очереди и running Java проверяют токен. Устаревший процесс останавливается, старый результат не применяется. Parse/reconcile и render выполняются вне main actor. Два concurrent slots и bounded cache сохраняются.
+
+Diff никогда не меняет документы. LCS формирует aligned text rows; крупные входы используют bounded fallback. Структурный matcher сравнивает scoped identities / endpoint pairs и свойства, повторения помечает ambiguity. Только exact source ranges и уникальные SVG признаки допускают переход/подсветку. Comparison documents read-only и не включаются в сохранённый Workspace.
+
+История — atomic JSON snapshots по SHA256 пути файла в Application Support. Настройки retention применяются при записи; ошибки history не делают успешное сохранение файла неуспешным. Restore запрашивает подтверждение, заменяет текущий source как обычное редактирование и оставляет запись файла пользователю.
